@@ -10,11 +10,13 @@
   --dim: #8b949e; --accent: #58a6ff; --green: #3fb950; --red: #f85149;
 }
 * { box-sizing: border-box; }
+html, body { height: 100%; }
 body { margin: 0; background: var(--bg); color: var(--text);
-  font: 13px/1.4 "Segoe UI", system-ui, sans-serif; }
+  font: 13px/1.4 "Segoe UI", system-ui, sans-serif;
+  display: flex; flex-direction: column; }
 header { display: flex; align-items: center; gap: 12px; padding: 10px 16px;
   background: var(--panel); border-bottom: 1px solid var(--border);
-  position: sticky; top: 0; z-index: 10; flex-wrap: wrap; }
+  flex-wrap: wrap; flex-shrink: 0; }
 h1 { font-size: 16px; margin: 0 12px 0 0; }
 button { background: #21262d; color: var(--text); border: 1px solid var(--border);
   border-radius: 6px; padding: 5px 12px; cursor: pointer; font: inherit; }
@@ -23,18 +25,30 @@ button.primary { background: #1f6feb; border-color: #1f6feb; color: #fff; }
 input, select { background: #0d1117; color: var(--text); border: 1px solid var(--border);
   border-radius: 6px; padding: 5px 8px; font: inherit; }
 #status { color: var(--dim); font-size: 12px; }
-#filters { display: flex; gap: 8px; padding: 8px 16px; flex-wrap: wrap; align-items: center; }
+#filters { display: flex; gap: 8px; padding: 8px 16px; flex-wrap: wrap; align-items: center;
+  flex-shrink: 0; }
 table { border-collapse: collapse; width: 100%; }
 th, td { padding: 5px 10px; border-bottom: 1px solid var(--border);
   text-align: right; white-space: nowrap; }
 th:first-child, td:first-child, th.left, td.left { text-align: left; }
 th { background: var(--panel); cursor: pointer; user-select: none;
-  position: sticky; top: 0; }
+  position: sticky; top: 0; z-index: 5; }
 th.sorted::after { content: " ▾"; color: var(--accent); }
 th.sorted.asc::after { content: " ▴"; }
 tbody tr:hover { background: #161b22; cursor: pointer; }
 .pos { color: var(--green); } .neg { color: var(--red); } .dim { color: var(--dim); }
-#tablewrap { overflow-x: auto; padding-bottom: 40px; }
+#tablewrap { flex: 1 1 auto; overflow: auto; }
+#pager { display: none; gap: 10px; padding: 8px 16px; align-items: center;
+  background: var(--panel); border-top: 1px solid var(--border); flex-shrink: 0; }
+.help { display: inline-block; width: 14px; height: 14px; line-height: 14px;
+  border-radius: 50%; background: #30363d; color: var(--dim); font-size: 10px;
+  font-weight: normal; text-align: center; cursor: help; margin-left: 4px;
+  vertical-align: middle; }
+.help:hover { background: var(--accent); color: #fff; }
+#tooltip { position: fixed; z-index: 1000; display: none; max-width: 300px;
+  background: #1c2128; border: 1px solid var(--border); border-radius: 6px;
+  padding: 8px 10px; font-size: 12px; line-height: 1.45; color: var(--text);
+  box-shadow: 0 4px 16px rgba(0,0,0,.5); white-space: normal; text-align: left; }
 .modal-bg { position: fixed; inset: 0; background: rgba(0,0,0,.6); display: none;
   align-items: flex-start; justify-content: center; z-index: 100; overflow-y: auto; padding: 40px 16px; }
 .modal-bg.open { display: flex; }
@@ -66,13 +80,13 @@ tbody tr:hover { background: #161b22; cursor: pointer; }
   <input id="fSearch" placeholder="Search name…" style="width:200px">
   <select id="fCategory"><option value="">All categories</option></select>
   <select id="fGroup"><option value="">All groups</option></select>
-  <label class="dim">Min margin %</label>
+  <label class="dim">Min margin %<span class="help" data-tip="Скрыть строки, у которых маржа выбранного сценария ниже указанной. Пусто — показывать все.">?</span></label>
   <input id="fMargin" type="number" value="" style="width:80px" placeholder="any">
-  <label class="dim">Min daily volume</label>
+  <label class="dim">Min daily volume<span class="help" data-tip="Скрыть предметы со средним дневным объёмом торгов ниже указанного. Отсекает неликвид, который долго продаётся.">?</span></label>
   <input id="fVolume" type="number" value="" style="width:90px" placeholder="any">
-  <label class="dim">Runs</label>
-  <input id="fRuns" type="number" min="1" value="1" style="width:70px" title="Runs per job: material rounding, order book depth, EIV and time all scale per job">
-  <label class="dim">Scenario</label>
+  <label class="dim">Runs<span class="help" data-tip="Число прогонов одного job для всех чертежей без индивидуальной настройки. Влияет на округление материалов (экономия ME накапливается), глубину закупки/продажи в стакане, job cost и время.">?</span></label>
+  <input id="fRuns" type="number" min="1" value="1" style="width:70px">
+  <label class="dim">Scenario<span class="help" data-tip="Сценарий торговли для колонок Margin % и ISK/h: как покупаются материалы (мгновенно / своими buy-ордерами) и как продаётся продукт (мгновенно / своим sell-ордером).">?</span></label>
   <select id="fScenario">
     <option value="buy_sell">Buy instant → Sell instant</option>
     <option value="buy_order" selected>Buy instant → Sell order</option>
@@ -87,22 +101,28 @@ tbody tr:hover { background: #161b22; cursor: pointer; }
 <div id="tablewrap" style="display:none">
 <table id="tbl">
   <thead><tr>
-    <th class="left" data-k="name">Item</th>
-    <th class="left" data-k="category">Category</th>
-    <th data-k="runs">Runs</th>
-    <th data-k="cost">Cost/job</th>
-    <th data-k="job_cost">Job cost</th>
-    <th data-k="sell_via_sell_order">Sell price</th>
-    <th data-k="p_buy_sell">P: inst→inst</th>
-    <th data-k="p_buy_order">P: inst→order</th>
-    <th data-k="p_order_sell">P: ord→inst</th>
-    <th data-k="p_order_order">P: ord→ord</th>
-    <th data-k="margin">Margin %</th>
-    <th data-k="iph">ISK/h</th>
-    <th data-k="daily_volume">Daily vol</th>
+    <th class="left" data-k="name">Item<span class="help" data-tip="Производимый T1-предмет. Клик по строке — детали: материалы, сценарии, настройки чертежа (ME/TE/Runs).">?</span></th>
+    <th class="left" data-k="category">Category<span class="help" data-tip="Категория предмета в EVE (Ship, Module, Charge…). Риги находятся в категории Module, группы Rig Armor / Rig Shield и т.д.">?</span></th>
+    <th data-k="runs">Runs<span class="help" data-tip="Число прогонов, по которому посчитана строка: значение из панели фильтров или индивидуальное для чертежа (задаётся в деталях). Все денежные колонки — на весь job.">?</span></th>
+    <th data-k="cost">Cost/job<span class="help" data-tip="Стоимость материалов на весь job при мгновенной покупке с sell-ордеров Jita 4-4. Цена взвешена по глубине стакана — для больших партий она выше лучшего ордера.">?</span></th>
+    <th data-k="job_cost">Job cost<span class="help" data-tip="Стоимость установки работы: EIV × индекс системы × (1 − бонус структуры) + налог структуры + 4% сбор SCC. EIV — сумма базовых материалов по adjusted-ценам CCP.">?</span></th>
+    <th data-k="sell_via_sell_order">Sell price<span class="help" data-tip="Цена за единицу при продаже своим sell-ордером (лучший текущий ask в Jita 4-4).">?</span></th>
+    <th data-k="p_buy_sell">P: inst→inst<span class="help" data-tip="Прибыль за job: материалы куплены мгновенно с sell-ордеров, продукт продан мгновенно в buy-ордера. Самый быстрый, но наименее выгодный сценарий. Учтён налог с продаж.">?</span></th>
+    <th data-k="p_buy_order">P: inst→order<span class="help" data-tip="Прибыль за job: материалы куплены мгновенно, продукт выставлен своим sell-ордером. Учтены налог с продаж и брокерская комиссия на продажу.">?</span></th>
+    <th data-k="p_order_sell">P: ord→inst<span class="help" data-tip="Прибыль за job: материалы закуплены своими buy-ордерами (дешевле, но ждать), продукт продан мгновенно. Учтены брокерская комиссия на закупку и налог с продаж.">?</span></th>
+    <th data-k="p_order_order">P: ord→ord<span class="help" data-tip="Прибыль за job: и закупка, и продажа своими ордерами. Максимальная маржа, но требует времени и присмотра за ордерами. Учтены обе брокерские комиссии и налог.">?</span></th>
+    <th data-k="margin">Margin %<span class="help" data-tip="Маржа выбранного в фильтре сценария: прибыль ÷ полные затраты × 100%.">?</span></th>
+    <th data-k="iph">ISK/h<span class="help" data-tip="Прибыль в час для выбранного сценария: прибыль за job ÷ время производства job (с учётом TE, навыков и бонуса структуры).">?</span></th>
+    <th data-k="daily_volume">Daily vol<span class="help" data-tip="Средний дневной объём торгов в регионе The Forge за последние 7 дней. Показывает, сколько штук реально удастся продать.">?</span></th>
   </tr></thead>
   <tbody id="tbody"></tbody>
 </table>
+</div>
+
+<div id="pager">
+  <button id="pgPrev">← Prev</button>
+  <span id="pgInfo" class="dim"></span>
+  <button id="pgNext">Next →</button>
 </div>
 
 <!-- Settings modal -->
@@ -112,34 +132,34 @@ tbody tr:hover { background: #161b22; cursor: pointer; }
     <h2>Settings</h2>
     <h3>Skills</h3>
     <div class="grid">
-      <div><label>Accounting (0-5)</label><input type="number" min="0" max="5" id="s_accounting"></div>
-      <div><label>Broker Relations (0-5)</label><input type="number" min="0" max="5" id="s_broker_relations"></div>
-      <div><label>Industry (0-5)</label><input type="number" min="0" max="5" id="s_industry"></div>
-      <div><label>Advanced Industry (0-5)</label><input type="number" min="0" max="5" id="s_advanced_industry"></div>
+      <div><label>Accounting (0-5)<span class="help" data-tip="Навык Accounting: снижает налог с продаж на 11% за уровень. База 7.5%, при V — 3.375%. Налог платится с каждой продажи.">?</span></label><input type="number" min="0" max="5" id="s_accounting"></div>
+      <div><label>Broker Relations (0-5)<span class="help" data-tip="Навык Broker Relations: снижает брокерскую комиссию на 0.3% за уровень (база 3%). Комиссия платится только при выставлении своих ордеров.">?</span></label><input type="number" min="0" max="5" id="s_broker_relations"></div>
+      <div><label>Industry (0-5)<span class="help" data-tip="Навык Industry: −4% ко времени производства за уровень.">?</span></label><input type="number" min="0" max="5" id="s_industry"></div>
+      <div><label>Advanced Industry (0-5)<span class="help" data-tip="Навык Advanced Industry: −3% ко времени производства за уровень.">?</span></label><input type="number" min="0" max="5" id="s_advanced_industry"></div>
     </div>
     <h3>Standings (Jita 4-4 owner)</h3>
     <div class="grid">
-      <div><label>Faction standing</label><input type="number" step="0.01" id="s_faction_standing"></div>
-      <div><label>Corp standing</label><input type="number" step="0.01" id="s_corp_standing"></div>
+      <div><label>Faction standing<span class="help" data-tip="Стендинг к фракции Caldari State (владелец Jita 4-4): −0.03% к брокерской комиссии за каждый пункт. Минимум комиссии на NPC-станции — 1%.">?</span></label><input type="number" step="0.01" id="s_faction_standing"></div>
+      <div><label>Corp standing<span class="help" data-tip="Стендинг к корпорации Caldari Navy: −0.02% к брокерской комиссии за каждый пункт.">?</span></label><input type="number" step="0.01" id="s_corp_standing"></div>
     </div>
     <h3>Blueprint</h3>
     <div class="grid">
-      <div><label>ME (0-10)</label><input type="number" min="0" max="10" id="s_blueprint_me"></div>
-      <div><label>TE (0-20)</label><input type="number" min="0" max="20" id="s_blueprint_te"></div>
+      <div><label>ME (0-10)<span class="help" data-tip="Material Efficiency чертежа по умолчанию: −1% материалов за уровень. Для отдельного чертежа можно задать своё значение в деталях предмета.">?</span></label><input type="number" min="0" max="10" id="s_blueprint_me"></div>
+      <div><label>TE (0-20)<span class="help" data-tip="Time Efficiency чертежа по умолчанию: −1% времени производства за уровень (0–20). Переопределяется в деталях предмета.">?</span></label><input type="number" min="0" max="20" id="s_blueprint_te"></div>
     </div>
     <h3>Structure</h3>
     <div class="grid">
-      <div><label>Material bonus %</label><input type="number" step="0.1" id="s_structure_material_bonus"></div>
-      <div><label>Rig material bonus %</label><input type="number" step="0.1" id="s_structure_rig_material_bonus"></div>
-      <div><label>Time bonus %</label><input type="number" step="0.1" id="s_structure_time_bonus"></div>
-      <div><label>Structure tax %</label><input type="number" step="0.1" id="s_structure_tax"></div>
-      <div><label>Job cost bonus % (Raitaru 3, Azbel 4, Sotiyo 5)</label>
+      <div><label>Material bonus %<span class="help" data-tip="Бонус структуры к расходу материалов: у Raitaru/Azbel/Sotiyo это 1%. Для NPC-станции — 0.">?</span></label><input type="number" step="0.1" id="s_structure_material_bonus"></div>
+      <div><label>Rig material bonus %<span class="help" data-tip="Бонус ME-рига структуры с учётом множителя региона: T1-риг 2% (×1 в hisec = 2%, ×1.9 в lowsec = 3.8%, ×2.1 в null = 4.2%). Если риг не подходит к предмету — ставь 0.">?</span></label><input type="number" step="0.1" id="s_structure_rig_material_bonus"></div>
+      <div><label>Time bonus %<span class="help" data-tip="Бонус структуры ко времени производства: Raitaru 15%, Azbel 20%, Sotiyo 30%. Плюс TE-риги, если есть.">?</span></label><input type="number" step="0.1" id="s_structure_time_bonus"></div>
+      <div><label>Structure tax %<span class="help" data-tip="Налог, выставленный владельцем структуры (виден в окне установки работы). Берётся от полного EIV. На NPC-станциях — 0.25%.">?</span></label><input type="number" step="0.1" id="s_structure_tax"></div>
+      <div><label>Job cost bonus % (Raitaru 3, Azbel 4, Sotiyo 5)<span class="help" data-tip="Бонус профиля инженерного комплекса к стоимости работы: уменьшает часть EIV × индекс системы. Raitaru 3%, Azbel 4%, Sotiyo 5%; NPC-станция — 0.">?</span></label>
         <input type="number" step="0.1" id="s_structure_cost_bonus"></div>
     </div>
     <h3>Manufacturing system</h3>
     <div class="grid">
       <div style="grid-column: span 2">
-        <label>System (type to search)</label>
+        <label>System (type to search)<span class="help" data-tip="Система, где стоит производство: определяет индекс стоимости работ (доля производства системы во всём кластере за 28 дней). Чем популярнее система, тем дороже установка работы. Индекс показывается в подсказках списка.">?</span></label>
         <input id="s_system_search" list="systemList" placeholder="e.g. Sobaseki">
         <datalist id="systemList"></datalist>
         <div class="dim" id="s_system_current"></div>
@@ -156,6 +176,8 @@ tbody tr:hover { background: #161b22; cursor: pointer; }
 
 <script>
 let ROWS = [], sortKey = "p_buy_order", sortAsc = false, SETTINGS = {}, selectedSystem = null;
+let page = 0;
+const PAGE_SIZE = 100;
 
 const fmt = (v, d=0) => v == null ? "—" :
   v.toLocaleString("en-US", {maximumFractionDigits: d, minimumFractionDigits: 0});
@@ -203,8 +225,17 @@ function render() {
   });
 
   document.getElementById("rowCount").textContent = `${rows.length} items`;
+
+  const pages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
+  page = Math.min(page, pages - 1);
+  document.getElementById("pager").style.display = rows.length > PAGE_SIZE ? "flex" : "none";
+  document.getElementById("pgInfo").textContent =
+    `Page ${page + 1} / ${pages} · items ${rows.length ? page * PAGE_SIZE + 1 : 0}–${Math.min(rows.length, (page + 1) * PAGE_SIZE)} of ${rows.length}`;
+  document.getElementById("pgPrev").disabled = page === 0;
+  document.getElementById("pgNext").disabled = page >= pages - 1;
+
   const scKeys = ["buy_sell","buy_order","order_sell","order_order"];
-  document.getElementById("tbody").innerHTML = rows.slice(0, 500).map(r => {
+  document.getElementById("tbody").innerHTML = rows.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE).map(r => {
     const s = r.scenarios[scen];
     return `<tr onclick="openDetail(${r.type_id})">
       <td class="left">${r.name}</td>
@@ -230,10 +261,18 @@ function render() {
 document.querySelectorAll("th").forEach(th => th.onclick = () => {
   if (sortKey === th.dataset.k) sortAsc = !sortAsc;
   else { sortKey = th.dataset.k; sortAsc = false; }
+  page = 0;
   render();
 });
 ["fSearch","fCategory","fGroup","fMargin","fVolume","fScenario"].forEach(id =>
-  document.getElementById(id).addEventListener("input", render));
+  document.getElementById(id).addEventListener("input", () => { page = 0; render(); }));
+
+document.getElementById("pgPrev").onclick = () => {
+  if (page > 0) { page--; render(); document.getElementById("tablewrap").scrollTop = 0; }
+};
+document.getElementById("pgNext").onclick = () => {
+  page++; render(); document.getElementById("tablewrap").scrollTop = 0;
+};
 document.getElementById("fCategory").addEventListener("input", updateGroups);
 
 function updateGroups() {
@@ -438,6 +477,41 @@ async function resetBp(bpId, typeId) {
   openDetail(typeId);
   loadItems();
 }
+
+// ---------- help tooltips ----------
+const tipEl = document.createElement("div");
+tipEl.id = "tooltip";
+document.body.appendChild(tipEl);
+
+function showTip(help) {
+  tipEl.textContent = help.dataset.tip;
+  tipEl.style.display = "block";
+  const r = help.getBoundingClientRect(), tw = tipEl.offsetWidth, th = tipEl.offsetHeight;
+  let x = r.left + r.width / 2 - tw / 2;
+  x = Math.max(8, Math.min(x, window.innerWidth - tw - 8));
+  let y = r.bottom + 6;
+  if (y + th > window.innerHeight - 8) y = r.top - th - 6;
+  tipEl.style.left = x + "px";
+  tipEl.style.top = y + "px";
+}
+function hideTip() { tipEl.style.display = "none"; }
+
+document.addEventListener("mouseover", e => {
+  const h = e.target.closest(".help");
+  if (h) showTip(h);
+});
+document.addEventListener("mouseout", e => {
+  if (e.target.closest(".help")) hideTip();
+});
+// tap/click support (mobile); also keep a header "?" click from sorting
+document.addEventListener("click", e => {
+  const h = e.target.closest(".help");
+  if (h) {
+    e.stopPropagation();
+    tipEl.style.display === "block" ? hideTip() : showTip(h);
+  } else hideTip();
+}, true);
+window.addEventListener("scroll", hideTip, true);
 
 function closeModal(id) { document.getElementById(id).classList.remove("open"); }
 document.querySelectorAll(".modal-bg").forEach(m =>

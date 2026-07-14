@@ -89,6 +89,7 @@ tbody tr:hover { background: #161b22; cursor: pointer; }
   <thead><tr>
     <th class="left" data-k="name">Item</th>
     <th class="left" data-k="category">Category</th>
+    <th data-k="runs">Runs</th>
     <th data-k="cost">Cost/job</th>
     <th data-k="job_cost">Job cost</th>
     <th data-k="sell_via_sell_order">Sell price</th>
@@ -208,6 +209,7 @@ function render() {
     return `<tr onclick="openDetail(${r.type_id})">
       <td class="left">${r.name}</td>
       <td class="left dim">${r.category}</td>
+      <td>${fmt(r.runs)}</td>
       <td>${fmtIsk(r.material_cost_instant)}</td>
       <td>${fmtIsk(r.job_cost)}</td>
       <td>${fmtIsk(r.sell_via_sell_order)}</td>

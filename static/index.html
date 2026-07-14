@@ -129,6 +129,8 @@ tbody tr:hover { background: #161b22; cursor: pointer; }
       <div><label>Rig material bonus %</label><input type="number" step="0.1" id="s_structure_rig_material_bonus"></div>
       <div><label>Time bonus %</label><input type="number" step="0.1" id="s_structure_time_bonus"></div>
       <div><label>Structure tax %</label><input type="number" step="0.1" id="s_structure_tax"></div>
+      <div><label>Job cost bonus % (Raitaru 3, Azbel 4, Sotiyo 5)</label>
+        <input type="number" step="0.1" id="s_structure_cost_bonus"></div>
     </div>
     <h3>Manufacturing system</h3>
     <div class="grid">
@@ -286,14 +288,17 @@ document.getElementById("btnHistory").onclick = () => fetch("/api/refresh-histor
 // ---------- settings ----------
 const S_FIELDS = ["accounting","broker_relations","industry","advanced_industry",
   "faction_standing","corp_standing","blueprint_me","blueprint_te",
-  "structure_material_bonus","structure_rig_material_bonus","structure_time_bonus","structure_tax"];
+  "structure_material_bonus","structure_rig_material_bonus","structure_time_bonus",
+  "structure_tax","structure_cost_bonus"];
 
 document.getElementById("btnSettings").onclick = async () => {
   SETTINGS = await (await fetch("/api/settings")).json();
   S_FIELDS.forEach(f => document.getElementById("s_" + f).value = SETTINGS[f]);
   selectedSystem = null;
+  const curIdx = SETTINGS.current_manufacturing_index;
   document.getElementById("s_system_current").textContent =
-    `Current: ${SETTINGS.system_name} (${SETTINGS.system_id})`;
+    `Current: ${SETTINGS.system_name} (${SETTINGS.system_id})` +
+    (curIdx == null ? "" : ` · manufacturing index ${(curIdx * 100).toFixed(2)}%`);
   document.getElementById("settingsModal").classList.add("open");
 };
 
@@ -302,9 +307,19 @@ document.getElementById("s_system_search").addEventListener("input", async e => 
   if (q.length < 2) return;
   const list = await (await fetch("/api/systems?q=" + encodeURIComponent(q))).json();
   const dl = document.getElementById("systemList");
-  dl.innerHTML = list.map(s => `<option value="${s.name}" data-id="${s.system_id}">`).join("");
+  dl.innerHTML = list.map(s => {
+    const idx = s.manufacturing_index == null ? "" :
+      ` — index ${(s.manufacturing_index * 100).toFixed(2)}%`;
+    return `<option value="${s.name}" label="${s.name}${idx}" data-id="${s.system_id}">`;
+  }).join("");
   const exact = list.find(s => s.name.toLowerCase() === q.toLowerCase());
-  if (exact) selectedSystem = exact;
+  if (exact) {
+    selectedSystem = exact;
+    const idx = exact.manufacturing_index;
+    document.getElementById("s_system_current").textContent =
+      `Selected: ${exact.name} (${exact.system_id})` +
+      (idx == null ? "" : ` · manufacturing index ${(idx * 100).toFixed(2)}%`);
+  }
 });
 
 document.getElementById("btnSaveSettings").onclick = async () => {

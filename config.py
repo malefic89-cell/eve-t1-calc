@@ -30,6 +30,7 @@ class Settings:
     structure_time_bonus: float = 15.0      # %
     structure_rig_material_bonus: float = 2.0  # % (e.g. T1 ME rig = 2.0 with hisec multiplier applied by user)
     structure_tax: float = 1.0              # % facility tax
+    structure_cost_bonus: float = 3.0       # % job cost bonus (Raitaru 3, Azbel 4, Sotiyo 5)
 
     # Manufacturing system (for the system cost index). Default: Sobaseki
     system_id: int = 30001363

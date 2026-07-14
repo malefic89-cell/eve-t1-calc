@@ -40,11 +40,20 @@ class TestMaterialQuantity:
 
 class TestJobCost:
     def test_basic(self):
-        # EIV 1_000_000, SCI 5%, tax 1%: 1M*0.05*1.01 + 1M*0.04 = 50500 + 40000
-        assert calc.job_cost(1_000_000, 0.05, 1.0) == pytest.approx(90_500)
+        # EIV 1M, SCI 5%, tax 1%: 1M*0.05 + 1M*0.01 + 1M*0.04 = 50000 + 10000 + 40000
+        assert calc.job_cost(1_000_000, 0.05, 1.0) == pytest.approx(100_000)
 
     def test_zero_index(self):
         assert calc.job_cost(1_000_000, 0.0, 0.0) == pytest.approx(40_000)
+
+    def test_structure_bonus_applies_to_sci_part_only(self):
+        # Raitaru 3%: 1M*0.05*0.97 + 1M*0.01 + 1M*0.04 = 48500 + 10000 + 40000
+        assert calc.job_cost(1_000_000, 0.05, 1.0, 3.0) == pytest.approx(98_500)
+
+    def test_salvager_in_game_reference(self):
+        # Verified in-game 2026-07-15: Salvager I at a 3%-tax Raitaru in
+        # Perimeter (SCI 5.15%), EIV 31206.59 -> 3743 ISK
+        assert calc.job_cost(31206.588, 0.0515, 3.0, 3.0) == pytest.approx(3743, abs=1)
 
     def test_eiv(self):
         assert calc.estimated_item_value([(10, 5.0), (2, 100.0)], runs=2) == pytest.approx(500.0)

@@ -37,9 +37,21 @@ def job_cost(
     eiv: float,
     system_cost_index: float,
     structure_tax_pct: float,
+    structure_cost_bonus_pct: float = 0.0,
 ) -> float:
-    """Install cost: EIV * SCI * (1 + structure tax) + 4% SCC surcharge on EIV."""
-    return eiv * system_cost_index * (1 + structure_tax_pct / 100) + eiv * SCC_SURCHARGE
+    """Install cost.
+
+    EIV * SCI * (1 - structure job cost bonus)   gross job cost
+    + EIV * facility tax                          owner-set tax, on full EIV
+    + EIV * 4%                                    SCC surcharge, on full EIV
+
+    structure_cost_bonus_pct: e.g. 3 for a Raitaru, 4 Azbel, 5 Sotiyo.
+    """
+    return eiv * (
+        system_cost_index * (1 - structure_cost_bonus_pct / 100)
+        + structure_tax_pct / 100
+        + SCC_SURCHARGE
+    )
 
 
 def estimated_item_value(base_materials: list[tuple[int, float]], runs: int = 1) -> float:

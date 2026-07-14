@@ -151,7 +151,7 @@ def compute_row(p: sde_mod.Product) -> dict:
     eiv = calc.estimated_item_value(
         [(m.base_qty, S.adjusted.get(m.type_id, 0.0)) for m in mats]
     )
-    jcost = calc.job_cost(eiv, sci, st.structure_tax)
+    jcost = calc.job_cost(eiv, sci, st.structure_tax, st.structure_cost_bonus)
 
     # Material cost per run, two buy methods
     cost_instant = 0.0   # buy from sell orders, volume-weighted
@@ -290,7 +290,11 @@ def status():
 
 @app.get("/api/settings")
 def get_settings():
-    return S.settings.to_dict()
+    d = S.settings.to_dict()
+    d["current_manufacturing_index"] = S.cost_indices.get(
+        S.settings.system_id, {}
+    ).get("manufacturing")
+    return d
 
 
 @app.put("/api/settings")
@@ -328,7 +332,11 @@ def categories():
 def systems(q: str = ""):
     if S.sde is None:
         raise HTTPException(503, "not ready")
-    return S.sde.search_systems(q)
+    out = []
+    for s in S.sde.search_systems(q):
+        idx = S.cost_indices.get(s["system_id"], {}).get("manufacturing")
+        out.append({**s, "manufacturing_index": idx})
+    return out
 
 
 @app.get("/api/item/{type_id}")

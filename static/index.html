@@ -65,6 +65,7 @@ tbody tr:hover { background: #161b22; cursor: pointer; }
 <div id="filters">
   <input id="fSearch" placeholder="Search name…" style="width:200px">
   <select id="fCategory"><option value="">All categories</option></select>
+  <select id="fGroup"><option value="">All groups</option></select>
   <label class="dim">Min margin %</label>
   <input id="fMargin" type="number" value="" style="width:80px" placeholder="any">
   <label class="dim">Min daily volume</label>
@@ -180,9 +181,11 @@ function render() {
   const minV = parseFloat(document.getElementById("fVolume").value);
   const scen = curScenario();
 
+  const grp = document.getElementById("fGroup").value;
   let rows = ROWS.filter(r => {
     if (q && !r.name.toLowerCase().includes(q)) return false;
     if (cat && r.category !== cat) return false;
+    if (grp && r.group !== grp) return false;
     const m = r.scenarios[scen].margin;
     if (!isNaN(minM) && (m == null || m < minM)) return false;
     if (!isNaN(minV) && (r.daily_volume == null || r.daily_volume < minV)) return false;
@@ -225,8 +228,20 @@ document.querySelectorAll("th").forEach(th => th.onclick = () => {
   else { sortKey = th.dataset.k; sortAsc = false; }
   render();
 });
-["fSearch","fCategory","fMargin","fVolume","fScenario"].forEach(id =>
+["fSearch","fCategory","fGroup","fMargin","fVolume","fScenario"].forEach(id =>
   document.getElementById(id).addEventListener("input", render));
+document.getElementById("fCategory").addEventListener("input", updateGroups);
+
+function updateGroups() {
+  const cat = document.getElementById("fCategory").value;
+  const sel = document.getElementById("fGroup");
+  const prev = sel.value;
+  const groups = [...new Set(ROWS.filter(r => !cat || r.category === cat)
+    .map(r => r.group))].sort();
+  sel.innerHTML = `<option value="">All groups</option>` +
+    groups.map(g => `<option${g === prev ? " selected" : ""}>${g}</option>`).join("");
+  if (sel.value !== prev) render();
+}
 
 async function loadItems() {
   const r = await fetch("/api/items");
@@ -234,6 +249,7 @@ async function loadItems() {
   ROWS = (await r.json()).rows;
   document.getElementById("loading").style.display = "none";
   document.getElementById("tablewrap").style.display = "";
+  updateGroups();
   render();
 }
 

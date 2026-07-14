@@ -170,18 +170,3 @@ class SDE:
             "SELECT typeName FROM invTypes WHERE typeID = ?", (type_id,)
         ).fetchone()
         return r["typeName"] if r else None
-
-    def categories(self) -> list[str]:
-        rows = self.conn.execute(
-            """
-            SELECT DISTINCT c.categoryName
-            FROM industryActivityProducts p
-            JOIN invTypes t ON t.typeID = p.typeID
-            JOIN invGroups g ON g.groupID = t.groupID
-            JOIN invCategories c ON c.categoryID = g.categoryID
-            WHERE p.activityID = ? AND t.published = 1
-            ORDER BY c.categoryName
-            """,
-            (ACTIVITY_MANUFACTURING,),
-        ).fetchall()
-        return [r["categoryName"] for r in rows]

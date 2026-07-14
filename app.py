@@ -323,9 +323,12 @@ def items():
 
 @app.get("/api/categories")
 def categories():
-    if S.sde is None:
+    # Derived from the loaded products so the list always matches the table
+    # (a raw SDE query once returned only "Blueprint" — the blueprint's own
+    # category — making the filter useless).
+    if not S.products:
         raise HTTPException(503, "not ready")
-    return S.sde.categories()
+    return sorted({p.category_name for p in S.products})
 
 
 @app.get("/api/systems")

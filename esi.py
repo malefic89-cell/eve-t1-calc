@@ -77,8 +77,9 @@ class ESIClient:
             if resp.status_code in (502, 503, 504, 420):
                 time.sleep(2 ** attempt + 1)
                 continue
-            if resp.status_code == 404:
-                raise ESIError(f"404 for {path}")
+            if 400 <= resp.status_code < 500:
+                # e.g. history returns 400 for type_ids that never trade
+                raise ESIError(f"{resp.status_code} for {path}")
             resp.raise_for_status()
             return resp
         raise ESIError(f"ESI kept failing for {path}")

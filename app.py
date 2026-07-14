@@ -229,11 +229,18 @@ def fetch_history_background():
         S.history_done = 0
 
     def one(p):
-        hist = S.esi.history(p.type_id)
+        try:
+            hist = S.esi.history(p.type_id)
+        except Exception:
+            log.warning("history fetch failed for type %d", p.type_id, exc_info=True)
+            hist = []
         vol = _avg_daily_volume(hist)
         with S.lock:
             S.volumes[p.type_id] = vol
             S.history_done += 1
+            done = S.history_done
+        if done % 250 == 0:  # let the table fill in progressively
+            recompute()
 
     try:
         with concurrent.futures.ThreadPoolExecutor(max_workers=10) as ex:
@@ -255,6 +262,9 @@ def _after_bootstrap():
     if S.status == "ready":
         S.volumes.update(_load_cached_volumes())
         recompute()
+        # Fresh cache entries are served from disk, so this only hits ESI
+        # for types whose history is stale or missing.
+        fetch_history_background()
 
 
 @app.get("/")

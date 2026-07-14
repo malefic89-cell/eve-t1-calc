@@ -245,7 +245,7 @@ async function loadCategories() {
 }
 
 // ---------- status polling ----------
-let wasReady = false;
+let wasReady = false, historyWasRunning = false;
 async function poll() {
   try {
     const s = await (await fetch("/api/status")).json();
@@ -254,7 +254,13 @@ async function poll() {
       const age = s.orders_age_s == null ? "?" : Math.round(s.orders_age_s / 60);
       txt = `${s.rows} items · orders ${age} min old`;
       if (s.history_running) txt += ` · volumes ${s.history_done}/${s.history_total}`;
-      if (!wasReady || s.history_running) { loadItems(); if (!wasReady) loadCategories(); }
+      // reload once more after the volume fetch finishes: the final recompute
+      // (with all volumes) happens after history_running flips back to false
+      if (!wasReady || s.history_running || historyWasRunning) {
+        loadItems();
+        if (!wasReady) loadCategories();
+      }
+      historyWasRunning = s.history_running;
       wasReady = true;
     } else if (s.status === "error") {
       txt = "ERROR: " + s.error;

@@ -389,8 +389,9 @@ async function openDetail(typeId) {
       <b>Blueprint:</b>
       ME <input type="number" min="0" max="10" id="bp_me" value="${r.me}" style="width:60px">
       TE <input type="number" min="0" max="20" id="bp_te" value="${r.te}" style="width:60px">
+      Runs <input type="number" min="1" id="bp_runs" value="${r.runs}" style="width:70px">
       <button class="primary" onclick="saveBp(${d.blueprint_type_id}, ${r.type_id})">Save</button>
-      ${r.me_te_override
+      ${r.has_override
         ? `<button onclick="resetBp(${d.blueprint_type_id}, ${r.type_id})">Use default</button>
            <span class="dim">custom for this blueprint</span>`
         : `<span class="dim">global default</span>`}
@@ -420,8 +421,9 @@ async function openDetail(typeId) {
 async function saveBp(bpId, typeId) {
   const me = parseInt(document.getElementById("bp_me").value);
   const te = parseInt(document.getElementById("bp_te").value);
+  const runs = parseInt(document.getElementById("bp_runs").value);
   const r = await fetch("/api/blueprint/" + bpId, {method: "PUT",
-    headers: {"Content-Type": "application/json"}, body: JSON.stringify({me, te})});
+    headers: {"Content-Type": "application/json"}, body: JSON.stringify({me, te, runs})});
   if (!r.ok) { alert("Save failed: " + (await r.json()).detail); return; }
   openDetail(typeId);
   loadItems();
@@ -429,7 +431,8 @@ async function saveBp(bpId, typeId) {
 
 async function resetBp(bpId, typeId) {
   await fetch("/api/blueprint/" + bpId, {method: "PUT",
-    headers: {"Content-Type": "application/json"}, body: JSON.stringify({me: null, te: null})});
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({me: null, te: null, runs: null})});
   openDetail(typeId);
   loadItems();
 }

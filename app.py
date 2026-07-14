@@ -135,11 +135,15 @@ def _avg_daily_volume(history: list[dict], days: int = 7) -> float:
 
 # ---------------- computation ----------------
 
-def _bp_me_te(blueprint_type_id: int) -> tuple[int, int]:
-    ov = S.settings.blueprint_overrides.get(str(blueprint_type_id))
-    if ov:
-        return ov["me"], ov["te"]
-    return S.settings.blueprint_me, S.settings.blueprint_te
+def _bp_params(blueprint_type_id: int) -> tuple[int, int, int]:
+    """(me, te, runs) for a blueprint: override values or global defaults."""
+    st = S.settings
+    ov = st.blueprint_overrides.get(str(blueprint_type_id), {})
+    return (
+        ov.get("me", st.blueprint_me),
+        ov.get("te", st.blueprint_te),
+        ov.get("runs", st.runs),
+    )
 
 
 def compute_row(p: sde_mod.Product) -> dict:
@@ -147,8 +151,7 @@ def compute_row(p: sde_mod.Product) -> dict:
     mats = S.materials.get(p.blueprint_type_id, [])
     if not mats:
         return {}
-    me, te = _bp_me_te(p.blueprint_type_id)
-    runs = st.runs
+    me, te, runs = _bp_params(p.blueprint_type_id)
 
     sci = S.cost_indices.get(st.system_id, {}).get("manufacturing", 0.0)
     broker = calc.broker_fee_rate(st.broker_relations, st.faction_standing, st.corp_standing)
@@ -216,7 +219,7 @@ def compute_row(p: sde_mod.Product) -> dict:
         "daily_volume": S.volumes.get(p.type_id),
         "me": me,
         "te": te,
-        "me_te_override": str(p.blueprint_type_id) in st.blueprint_overrides,
+        "has_override": str(p.blueprint_type_id) in st.blueprint_overrides,
         "scenarios": sc,
     }
 
@@ -364,11 +367,11 @@ def item_detail(type_id: int):
     if p is None:
         raise HTTPException(404, "unknown product")
     st = S.settings
-    me, _te = _bp_me_te(p.blueprint_type_id)
+    me, _te, bp_runs = _bp_params(p.blueprint_type_id)
     mats = []
     for m in S.materials.get(p.blueprint_type_id, []):
         qty = calc.material_quantity(
-            m.base_qty, st.runs, me, st.structure_material_bonus, st.structure_rig_material_bonus
+            m.base_qty, bp_runs, me, st.structure_material_bonus, st.structure_rig_material_bonus
         )
         b = S.book.get(m.type_id, {"buy": [], "sell": []})
         mats.append({
@@ -385,16 +388,14 @@ def item_detail(type_id: int):
 
 
 @app.put("/api/blueprint/{blueprint_type_id}")
-def set_blueprint_me_te(blueprint_type_id: int, payload: dict):
-    """Set (or clear, with {"me": null}) a per-blueprint ME/TE override."""
+def set_blueprint_override(blueprint_type_id: int, payload: dict):
+    """Set a per-blueprint ME/TE/runs override; all-null payload clears it."""
     st = S.settings
-    if payload.get("me") is None and payload.get("te") is None:
-        st.blueprint_overrides.pop(str(blueprint_type_id), None)
+    entry = {k: payload[k] for k in ("me", "te", "runs") if payload.get(k) is not None}
+    if entry:
+        st.blueprint_overrides[str(blueprint_type_id)] = entry
     else:
-        st.blueprint_overrides[str(blueprint_type_id)] = {
-            "me": payload.get("me", st.blueprint_me),
-            "te": payload.get("te", st.blueprint_te),
-        }
+        st.blueprint_overrides.pop(str(blueprint_type_id), None)
     try:
         config.save_settings(st)
     except ValueError as e:

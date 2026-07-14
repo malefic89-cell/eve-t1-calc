@@ -24,8 +24,9 @@ class Settings:
     # Blueprint research defaults (used unless a per-blueprint override exists)
     blueprint_me: int = 10
     blueprint_te: int = 20
-    # Per-blueprint overrides: {blueprint_type_id as str: {"me": int, "te": int}}
-    # (str keys because JSON round-trips object keys as strings)
+    # Per-blueprint overrides: {blueprint_type_id as str: {"me"?, "te"?, "runs"?}}
+    # (str keys because JSON round-trips object keys as strings; absent keys
+    # fall back to the corresponding global setting)
     blueprint_overrides: dict = field(default_factory=dict)
 
     # Manufacturing structure
@@ -62,12 +63,21 @@ class Settings:
             raise ValueError("runs must be >= 1")
         clean = {}
         for k, ov in (self.blueprint_overrides or {}).items():
-            me, te = int(ov["me"]), int(ov["te"])
-            if not 0 <= me <= 10:
-                raise ValueError(f"blueprint {k}: ME must be 0-10")
-            if not 0 <= te <= 20:
-                raise ValueError(f"blueprint {k}: TE must be 0-20")
-            clean[str(int(k))] = {"me": me, "te": te}
+            entry = {}
+            if ov.get("me") is not None:
+                entry["me"] = int(ov["me"])
+                if not 0 <= entry["me"] <= 10:
+                    raise ValueError(f"blueprint {k}: ME must be 0-10")
+            if ov.get("te") is not None:
+                entry["te"] = int(ov["te"])
+                if not 0 <= entry["te"] <= 20:
+                    raise ValueError(f"blueprint {k}: TE must be 0-20")
+            if ov.get("runs") is not None:
+                entry["runs"] = int(ov["runs"])
+                if not 1 <= entry["runs"] <= 1_000_000:
+                    raise ValueError(f"blueprint {k}: runs must be >= 1")
+            if entry:
+                clean[str(int(k))] = entry
         self.blueprint_overrides = clean
 
     def to_dict(self) -> dict:

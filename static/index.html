@@ -70,6 +70,8 @@ tbody tr:hover { background: #161b22; cursor: pointer; }
   <input id="fMargin" type="number" value="" style="width:80px" placeholder="any">
   <label class="dim">Min daily volume</label>
   <input id="fVolume" type="number" value="" style="width:90px" placeholder="any">
+  <label class="dim">Runs</label>
+  <input id="fRuns" type="number" min="1" value="1" style="width:70px" title="Runs per job: material rounding, order book depth, EIV and time all scale per job">
   <label class="dim">Scenario</label>
   <select id="fScenario">
     <option value="buy_sell">Buy instant → Sell instant</option>
@@ -87,7 +89,7 @@ tbody tr:hover { background: #161b22; cursor: pointer; }
   <thead><tr>
     <th class="left" data-k="name">Item</th>
     <th class="left" data-k="category">Category</th>
-    <th data-k="cost">Cost/run</th>
+    <th data-k="cost">Cost/job</th>
     <th data-k="job_cost">Job cost</th>
     <th data-k="sell_via_sell_order">Sell price</th>
     <th data-k="p_buy_sell">P: inst→inst</th>
@@ -253,6 +255,14 @@ async function loadItems() {
   render();
 }
 
+async function initRuns() {
+  try {
+    const s = await (await fetch("/api/settings")).json();
+    document.getElementById("fRuns").value = s.runs || 1;
+  } catch (e) { /* server starting */ }
+}
+initRuns();
+
 async function loadCategories() {
   const r = await fetch("/api/categories");
   if (!r.ok) return;
@@ -300,6 +310,20 @@ document.getElementById("btnRefresh").onclick = async () => {
   await fetch("/api/refresh", {method: "POST"}); wasReady = false;
 };
 document.getElementById("btnHistory").onclick = () => fetch("/api/refresh-history", {method: "POST"});
+
+let runsTimer = null;
+document.getElementById("fRuns").addEventListener("input", () => {
+  clearTimeout(runsTimer);
+  runsTimer = setTimeout(async () => {
+    const runs = parseInt(document.getElementById("fRuns").value);
+    if (!runs || runs < 1) return;
+    const cur = await (await fetch("/api/settings")).json();
+    await fetch("/api/settings", {method: "PUT",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({...cur, runs})});
+    loadItems();
+  }, 400);
+});
 
 // ---------- settings ----------
 const S_FIELDS = ["accounting","broker_relations","industry","advanced_industry",
@@ -359,7 +383,8 @@ async function openDetail(typeId) {
     <button class="close" onclick="closeModal('detailModal')">✕</button>
     <h2>${r.name}</h2>
     <p class="dim">${r.category} / ${r.group} · ${r.qty_per_run} per run ·
-      ${(r.time_per_run_s/60).toFixed(1)} min/run · job cost ${fmtIsk(r.job_cost)} ISK</p>
+      ${(r.time_per_run_s/60).toFixed(1)} min/run · job: ${r.runs} run${r.runs > 1 ? "s" : ""} ·
+      job cost ${fmtIsk(r.job_cost)} ISK</p>
     <p>
       <b>Blueprint:</b>
       ME <input type="number" min="0" max="10" id="bp_me" value="${r.me}" style="width:60px">
@@ -370,7 +395,7 @@ async function openDetail(typeId) {
            <span class="dim">custom for this blueprint</span>`
         : `<span class="dim">global default</span>`}
     </p>
-    <h3>Materials (per run, ME applied)</h3>
+    <h3>Materials (per job, ME applied)</h3>
     <table><thead><tr><th class="left">Material</th><th>Base</th><th>With ME</th>
       <th>Sell price (VW)</th><th>Best buy</th><th>Cost (instant)</th></tr></thead><tbody>
       ${d.materials.map(m => `<tr>
@@ -381,7 +406,7 @@ async function openDetail(typeId) {
       <tr><td class="left"><b>Total (instant / via orders)</b></td><td></td><td></td><td></td><td></td>
         <td><b>${fmtIsk(r.material_cost_instant)} / ${fmtIsk(r.material_cost_orders)}</b></td></tr>
     </tbody></table>
-    <h3>Scenarios (per run)</h3>
+    <h3>Scenarios (per job)</h3>
     <table><thead><tr><th class="left">Scenario</th><th>Profit</th><th>Margin %</th><th>ISK/h</th></tr></thead>
     <tbody>${Object.entries(scenNames).map(([k, n]) => `<tr>
       <td class="left">${n}</td>

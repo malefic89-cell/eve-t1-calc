@@ -39,6 +39,10 @@ class Settings:
     system_id: int = 30001363
     system_name: str = "Sobaseki"
 
+    # Runs per job: affects material rounding (per job, not per run),
+    # order book depth walked, EIV and total time
+    runs: int = 1
+
     def validate(self) -> None:
         for name in ("accounting", "broker_relations", "industry", "advanced_industry"):
             v = getattr(self, name)
@@ -53,6 +57,9 @@ class Settings:
             v = float(getattr(self, name))
             if not -10.0 <= v <= 10.0:
                 raise ValueError(f"{name} must be -10..10")
+        self.runs = int(self.runs)
+        if not 1 <= self.runs <= 1_000_000:
+            raise ValueError("runs must be >= 1")
         clean = {}
         for k, ov in (self.blueprint_overrides or {}).items():
             me, te = int(ov["me"]), int(ov["te"])

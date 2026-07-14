@@ -148,6 +148,7 @@ def compute_row(p: sde_mod.Product) -> dict:
     if not mats:
         return {}
     me, te = _bp_me_te(p.blueprint_type_id)
+    runs = st.runs
 
     sci = S.cost_indices.get(st.system_id, {}).get("manufacturing", 0.0)
     broker = calc.broker_fee_rate(st.broker_relations, st.faction_standing, st.corp_standing)
@@ -157,17 +158,17 @@ def compute_row(p: sde_mod.Product) -> dict:
     )
 
     eiv = calc.estimated_item_value(
-        [(m.base_qty, S.adjusted.get(m.type_id, 0.0)) for m in mats]
+        [(m.base_qty, S.adjusted.get(m.type_id, 0.0)) for m in mats], runs
     )
     jcost = calc.job_cost(eiv, sci, st.structure_tax, st.structure_cost_bonus)
 
-    # Material cost per run, two buy methods
+    # Material cost for the whole job, two buy methods
     cost_instant = 0.0   # buy from sell orders, volume-weighted
     cost_orders = 0.0    # own buy orders at best bid (broker fee added in scenario)
     instant_ok = orders_ok = True
     for m in mats:
         qty = calc.material_quantity(
-            m.base_qty, 1, me, st.structure_material_bonus, st.structure_rig_material_bonus
+            m.base_qty, runs, me, st.structure_material_bonus, st.structure_rig_material_bonus
         )
         b = S.book.get(m.type_id, {"buy": [], "sell": []})
         vw = calc.volume_weighted_price(b["sell"], qty)
@@ -182,8 +183,9 @@ def compute_row(p: sde_mod.Product) -> dict:
             cost_orders += bid * qty
 
     pb = S.book.get(p.type_id, {"buy": [], "sell": []})
-    sell_instant_unit = calc.volume_weighted_price(pb["buy"], p.quantity_per_run)  # dump to buy orders
-    sell_order_unit = calc.best_price(pb["sell"])                                  # own sell order at best ask
+    units = p.quantity_per_run * runs
+    sell_instant_unit = calc.volume_weighted_price(pb["buy"], units)  # dump to buy orders
+    sell_order_unit = calc.best_price(pb["sell"])                     # own sell order at best ask
 
     mc_i = cost_instant if instant_ok else None
     mc_o = cost_orders if orders_ok else None
@@ -195,7 +197,7 @@ def compute_row(p: sde_mod.Product) -> dict:
         "order_sell": (mc_o, True, sell_instant_unit, False),    # own buy orders -> instant sell
         "order_order": (mc_o, True, sell_order_unit, True),      # own buy orders -> own sell order
     }.items():
-        s = calc.scenario(mc, jcost, rev, p.quantity_per_run, buy_broker, sell_broker, broker, tax, t_run)
+        s = calc.scenario(mc, jcost, rev, units, buy_broker, sell_broker, broker, tax, t_run * runs)
         sc[key] = {"profit": s.profit_per_run, "margin": s.margin_pct, "iph": s.isk_per_hour}
 
     return {
@@ -204,6 +206,7 @@ def compute_row(p: sde_mod.Product) -> dict:
         "group": p.group_name,
         "category": p.category_name,
         "qty_per_run": p.quantity_per_run,
+        "runs": runs,
         "time_per_run_s": round(t_run),
         "material_cost_instant": mc_i,
         "material_cost_orders": mc_o,
@@ -365,7 +368,7 @@ def item_detail(type_id: int):
     mats = []
     for m in S.materials.get(p.blueprint_type_id, []):
         qty = calc.material_quantity(
-            m.base_qty, 1, me, st.structure_material_bonus, st.structure_rig_material_bonus
+            m.base_qty, st.runs, me, st.structure_material_bonus, st.structure_rig_material_bonus
         )
         b = S.book.get(m.type_id, {"buy": [], "sell": []})
         mats.append({

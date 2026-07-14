@@ -71,7 +71,8 @@ class TestFees:
         assert calc.broker_fee_rate(5, 10.0, 10.0) == pytest.approx(0.01)
 
     def test_broker_floor(self):
-        assert calc.broker_fee_rate(5, 50.0, 50.0) == pytest.approx(0.005)
+        # NPC station floor is 1% (EVE Uni wiki, checked 2026-07)
+        assert calc.broker_fee_rate(5, 50.0, 50.0) == pytest.approx(0.01)
 
     def test_sales_tax_zero_skill(self):
         assert calc.sales_tax_rate(0) == pytest.approx(0.075)

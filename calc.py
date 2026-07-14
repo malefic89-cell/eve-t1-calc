@@ -66,9 +66,9 @@ def broker_fee_rate(
     faction_standing: float = 0.0,
     corp_standing: float = 0.0,
 ) -> float:
-    """NPC station broker fee as a fraction. Floor 0.5%."""
+    """NPC station broker fee as a fraction. Floor 1%."""
     rate = 0.03 - 0.003 * broker_relations - 0.0003 * faction_standing - 0.0002 * corp_standing
-    return max(0.005, rate)
+    return max(0.01, rate)
 
 
 def sales_tax_rate(accounting: int) -> float:

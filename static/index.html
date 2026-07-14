@@ -360,6 +360,16 @@ async function openDetail(typeId) {
     <h2>${r.name}</h2>
     <p class="dim">${r.category} / ${r.group} · ${r.qty_per_run} per run ·
       ${(r.time_per_run_s/60).toFixed(1)} min/run · job cost ${fmtIsk(r.job_cost)} ISK</p>
+    <p>
+      <b>Blueprint:</b>
+      ME <input type="number" min="0" max="10" id="bp_me" value="${r.me}" style="width:60px">
+      TE <input type="number" min="0" max="20" id="bp_te" value="${r.te}" style="width:60px">
+      <button class="primary" onclick="saveBp(${d.blueprint_type_id}, ${r.type_id})">Save</button>
+      ${r.me_te_override
+        ? `<button onclick="resetBp(${d.blueprint_type_id}, ${r.type_id})">Use default</button>
+           <span class="dim">custom for this blueprint</span>`
+        : `<span class="dim">global default</span>`}
+    </p>
     <h3>Materials (per run, ME applied)</h3>
     <table><thead><tr><th class="left">Material</th><th>Base</th><th>With ME</th>
       <th>Sell price (VW)</th><th>Best buy</th><th>Cost (instant)</th></tr></thead><tbody>
@@ -380,6 +390,23 @@ async function openDetail(typeId) {
       <td class="${cls(sc[k].iph)}">${fmtIsk(sc[k].iph)}</td>
     </tr>`).join("")}</tbody></table>`;
   document.getElementById("detailModal").classList.add("open");
+}
+
+async function saveBp(bpId, typeId) {
+  const me = parseInt(document.getElementById("bp_me").value);
+  const te = parseInt(document.getElementById("bp_te").value);
+  const r = await fetch("/api/blueprint/" + bpId, {method: "PUT",
+    headers: {"Content-Type": "application/json"}, body: JSON.stringify({me, te})});
+  if (!r.ok) { alert("Save failed: " + (await r.json()).detail); return; }
+  openDetail(typeId);
+  loadItems();
+}
+
+async function resetBp(bpId, typeId) {
+  await fetch("/api/blueprint/" + bpId, {method: "PUT",
+    headers: {"Content-Type": "application/json"}, body: JSON.stringify({me: null, te: null})});
+  openDetail(typeId);
+  loadItems();
 }
 
 function closeModal(id) { document.getElementById(id).classList.remove("open"); }

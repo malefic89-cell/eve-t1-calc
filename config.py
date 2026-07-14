@@ -21,9 +21,12 @@ class Settings:
     faction_standing: float = 0.0
     corp_standing: float = 0.0
 
-    # Blueprint research (applied to every blueprint unless overridden later)
+    # Blueprint research defaults (used unless a per-blueprint override exists)
     blueprint_me: int = 10
     blueprint_te: int = 20
+    # Per-blueprint overrides: {blueprint_type_id as str: {"me": int, "te": int}}
+    # (str keys because JSON round-trips object keys as strings)
+    blueprint_overrides: dict = field(default_factory=dict)
 
     # Manufacturing structure
     structure_material_bonus: float = 1.0   # % (e.g. Raitaru = 1)
@@ -50,6 +53,15 @@ class Settings:
             v = float(getattr(self, name))
             if not -10.0 <= v <= 10.0:
                 raise ValueError(f"{name} must be -10..10")
+        clean = {}
+        for k, ov in (self.blueprint_overrides or {}).items():
+            me, te = int(ov["me"]), int(ov["te"])
+            if not 0 <= me <= 10:
+                raise ValueError(f"blueprint {k}: ME must be 0-10")
+            if not 0 <= te <= 20:
+                raise ValueError(f"blueprint {k}: TE must be 0-20")
+            clean[str(int(k))] = {"me": me, "te": te}
+        self.blueprint_overrides = clean
 
     def to_dict(self) -> dict:
         return asdict(self)

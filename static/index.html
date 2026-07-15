@@ -28,8 +28,10 @@ input, select { background: #0d1117; color: var(--text); border: 1px solid var(-
 #filters { display: flex; gap: 8px; padding: 8px 16px; flex-wrap: wrap; align-items: center;
   flex-shrink: 0; }
 table { border-collapse: collapse; width: 100%; }
-th, td { padding: 5px 10px; border-bottom: 1px solid var(--border);
+th, td { padding: 4px 7px; border-bottom: 1px solid var(--border);
   text-align: right; white-space: nowrap; }
+td.name { max-width: 230px; overflow: hidden; text-overflow: ellipsis; }
+td.grp { max-width: 130px; overflow: hidden; text-overflow: ellipsis; }
 th:first-child, td:first-child, th.left, td.left { text-align: left; }
 th { background: var(--panel); cursor: pointer; user-select: none;
   position: sticky; top: 0; z-index: 5; }
@@ -71,27 +73,26 @@ tbody tr:hover { background: #161b22; cursor: pointer; }
 <header>
   <h1>EVE T1 Profit Calculator</h1>
   <button class="primary" id="btnRefresh">⟳ Refresh prices</button>
-  <button id="btnHistory">Fetch volumes</button>
   <button id="btnSettings">⚙ Settings</button>
   <span id="status"></span>
 </header>
 
 <div id="filters">
-  <input id="fSearch" placeholder="Search name…" style="width:200px">
-  <select id="fCategory"><option value="">All categories</option></select>
-  <select id="fGroup"><option value="">All groups</option></select>
-  <label class="dim">Min margin %<span class="help" data-tip="Скрыть строки, у которых маржа выбранного сценария ниже указанной. Пусто — показывать все.">?</span></label>
-  <input id="fMargin" type="number" value="" style="width:80px" placeholder="any">
-  <label class="dim">Min daily volume<span class="help" data-tip="Скрыть предметы со средним дневным объёмом торгов ниже указанного. Отсекает неликвид, который долго продаётся.">?</span></label>
-  <input id="fVolume" type="number" value="" style="width:90px" placeholder="any">
+  <input id="fSearch" placeholder="Search name…" style="width:160px">
+  <select id="fCategory" style="max-width:150px"><option value="">All categories</option></select>
+  <select id="fGroup" style="max-width:150px"><option value="">All groups</option></select>
+  <label class="dim">Margin ≥<span class="help" data-tip="Минимальная маржа, %: скрыть строки, у которых маржа выбранного сценария ниже указанной. Пусто — показывать все.">?</span></label>
+  <input id="fMargin" type="number" value="" style="width:65px" placeholder="%">
+  <label class="dim">Vol/day ≥<span class="help" data-tip="Минимальный дневной объём торгов: скрыть предметы, которых продаётся меньше указанного числа штук в день. Отсекает неликвид.">?</span></label>
+  <input id="fVolume" type="number" value="" style="width:65px" placeholder="any">
   <label class="dim">Runs<span class="help" data-tip="Число прогонов одного job для всех чертежей без индивидуальной настройки. Влияет на округление материалов (экономия ME накапливается), глубину закупки/продажи в стакане, job cost и время.">?</span></label>
-  <input id="fRuns" type="number" min="1" value="1" style="width:70px">
-  <label class="dim">Scenario<span class="help" data-tip="Сценарий торговли для колонок Margin % и ISK/h: как покупаются материалы (мгновенно / своими buy-ордерами) и как продаётся продукт (мгновенно / своим sell-ордером).">?</span></label>
+  <input id="fRuns" type="number" min="1" value="1" style="width:65px">
+  <label class="dim">Scenario<span class="help" data-tip="Сценарий торговли для колонок Margin % и ISK/h. Inst — мгновенно по текущим ордерам, Order — своим ордером (дешевле купить / дороже продать, но дольше и с брокерской комиссией). Формат: покупка материалов → продажа продукта.">?</span></label>
   <select id="fScenario">
-    <option value="buy_sell">Buy instant → Sell instant</option>
-    <option value="buy_order" selected>Buy instant → Sell order</option>
-    <option value="order_sell">Buy orders → Sell instant</option>
-    <option value="order_order">Buy orders → Sell order</option>
+    <option value="buy_sell">Inst → Inst</option>
+    <option value="buy_order" selected>Inst → Order</option>
+    <option value="order_sell">Order → Inst</option>
+    <option value="order_order">Order → Order</option>
   </select>
   <span class="dim" id="rowCount"></span>
 </div>
@@ -101,8 +102,8 @@ tbody tr:hover { background: #161b22; cursor: pointer; }
 <div id="tablewrap" style="display:none">
 <table id="tbl">
   <thead><tr>
-    <th class="left" data-k="name">Item<span class="help" data-tip="Производимый T1-предмет. Клик по строке — детали: материалы, сценарии, настройки чертежа (ME/TE/Runs).">?</span></th>
-    <th class="left" data-k="category">Category<span class="help" data-tip="Категория предмета в EVE (Ship, Module, Charge…). Риги находятся в категории Module, группы Rig Armor / Rig Shield и т.д.">?</span></th>
+    <th class="left" data-k="name">Item<span class="help" data-tip="Производимый T1-предмет. Длинные названия обрезаются — полное видно при наведении. Клик по строке — детали: материалы, сценарии, настройки чертежа (ME/TE/Runs).">?</span></th>
+    <th class="left" data-k="group">Group<span class="help" data-tip="Группа предмета (Frigate, Rig Armor, Hybrid Charge…). Категория видна при наведении на ячейку; фильтр по категориям — в панели сверху.">?</span></th>
     <th data-k="runs">Runs<span class="help" data-tip="Число прогонов, по которому посчитана строка: значение из панели фильтров или индивидуальное для чертежа (задаётся в деталях). Все денежные колонки — на весь job.">?</span></th>
     <th data-k="cost">Cost/job<span class="help" data-tip="Стоимость материалов на весь job при мгновенной покупке с sell-ордеров Jita 4-4. Цена взвешена по глубине стакана — для больших партий она выше лучшего ордера.">?</span></th>
     <th data-k="job_cost">Job cost<span class="help" data-tip="Стоимость установки работы: EIV × индекс системы × (1 − бонус структуры) + налог структуры + 4% сбор SCC. EIV — сумма базовых материалов по adjusted-ценам CCP.">?</span></th>
@@ -182,6 +183,15 @@ const PAGE_SIZE = 100;
 const fmt = (v, d=0) => v == null ? "—" :
   v.toLocaleString("en-US", {maximumFractionDigits: d, minimumFractionDigits: 0});
 const fmtIsk = v => v == null ? "—" : fmt(v, v < 100 ? 2 : 0);
+// compact money for table cells: 12.3k / 4.56M / 1.23B (exact value in title)
+const fmtC = v => {
+  if (v == null) return "—";
+  const a = Math.abs(v);
+  if (a >= 1e9) return (v / 1e9).toFixed(2) + "B";
+  if (a >= 1e6) return (v / 1e6).toFixed(2) + "M";
+  if (a >= 1e4) return (v / 1e3).toFixed(1) + "k";
+  return fmt(v, a < 100 ? 2 : 0);
+};
 const cls = v => v == null ? "dim" : v >= 0 ? "pos" : "neg";
 
 function metric(r, key) {
@@ -238,17 +248,17 @@ function render() {
   document.getElementById("tbody").innerHTML = rows.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE).map(r => {
     const s = r.scenarios[scen];
     return `<tr onclick="openDetail(${r.type_id})">
-      <td class="left">${r.name}</td>
-      <td class="left dim">${r.category}</td>
+      <td class="left name" title="${r.name}">${r.name}</td>
+      <td class="left dim grp" title="${r.category} / ${r.group}">${r.group}</td>
       <td>${fmt(r.runs)}</td>
-      <td>${fmtIsk(r.material_cost_instant)}</td>
-      <td>${fmtIsk(r.job_cost)}</td>
-      <td>${fmtIsk(r.sell_via_sell_order)}</td>
+      <td title="${fmtIsk(r.material_cost_instant)}">${fmtC(r.material_cost_instant)}</td>
+      <td title="${fmtIsk(r.job_cost)}">${fmtC(r.job_cost)}</td>
+      <td title="${fmtIsk(r.sell_via_sell_order)}">${fmtC(r.sell_via_sell_order)}</td>
       ${scKeys.map(k => { const p = r.scenarios[k].profit;
-        return `<td class="${cls(p)}">${fmtIsk(p)}</td>`; }).join("")}
+        return `<td class="${cls(p)}" title="${fmtIsk(p)}">${fmtC(p)}</td>`; }).join("")}
       <td class="${cls(s.margin)}">${s.margin == null ? "—" : s.margin.toFixed(1)}</td>
-      <td class="${cls(s.iph)}">${fmtIsk(s.iph)}</td>
-      <td>${fmt(r.daily_volume)}</td>
+      <td class="${cls(s.iph)}" title="${fmtIsk(s.iph)}">${fmtC(s.iph)}</td>
+      <td title="${fmt(r.daily_volume)}">${r.daily_volume == null ? "—" : fmtC(Math.round(r.daily_volume))}</td>
     </tr>`;
   }).join("");
 
@@ -274,6 +284,11 @@ document.getElementById("pgNext").onclick = () => {
   page++; render(); document.getElementById("tablewrap").scrollTop = 0;
 };
 document.getElementById("fCategory").addEventListener("input", updateGroups);
+// truncated select values (max-width) show in full on hover
+["fCategory","fGroup"].forEach(id => {
+  const el = document.getElementById(id);
+  el.addEventListener("input", () => el.title = el.value || "");
+});
 
 function updateGroups() {
   const cat = document.getElementById("fCategory").value;
@@ -350,8 +365,6 @@ async function poll() {
 document.getElementById("btnRefresh").onclick = async () => {
   await fetch("/api/refresh", {method: "POST"}); wasReady = false;
 };
-document.getElementById("btnHistory").onclick = () => fetch("/api/refresh-history", {method: "POST"});
-
 let runsTimer = null;
 document.getElementById("fRuns").addEventListener("input", () => {
   clearTimeout(runsTimer);

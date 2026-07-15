@@ -159,6 +159,44 @@ class TestRealisticPrices:
         assert calc.realistic_buy_price(None, None) is None
 
 
+class TestJobMaterialCost:
+    BOOK = {
+        34: {"buy": [[4.0, 10**9]], "sell": [[5.0, 10**9]]},          # deep mineral
+        58919: {"buy": [[29000.0, 50]], "sell": [[29010.0, 500]]},    # finished module input
+    }
+
+    def test_all_inputs_priced_from_book(self):
+        # 100 tritanium @ 5 + 1 module @ 29010 — the module is not skipped
+        mc_i, mc_o, unp = calc.job_material_cost(
+            [(34, 100), (58919, 1)], 1, 0, 0, 0, self.BOOK)
+        assert mc_i == pytest.approx(100 * 5.0 + 29010.0)
+        assert mc_o == pytest.approx(100 * 4.0 + 29000.0)
+        assert unp == []
+
+    def test_missing_sell_orders_marks_unpriceable(self):
+        book = {34: {"buy": [[4.0, 10**9]], "sell": []}}
+        mc_i, mc_o, unp = calc.job_material_cost([(34, 100)], 1, 0, 0, 0, book)
+        assert mc_i is None          # never silently 0
+        assert mc_o == pytest.approx(400.0)
+        assert unp == [34]
+
+    def test_type_absent_from_book_is_unpriceable(self):
+        mc_i, mc_o, unp = calc.job_material_cost([(999999, 10)], 1, 0, 0, 0, {})
+        assert mc_i is None and mc_o is None
+        assert unp == [999999]
+
+    def test_insufficient_depth_is_unpriceable(self):
+        book = {34: {"buy": [], "sell": [[5.0, 10]]}}
+        _, _, unp = calc.job_material_cost([(34, 100)], 1, 0, 0, 0, book)
+        assert unp == [34]
+
+    def test_p95_floors_buy_orders(self):
+        book = {34: {"buy": [[1.0, 10**9]], "sell": [[5.0, 10**9]]}}
+        _, mc_o, _ = calc.job_material_cost(
+            [(34, 100)], 1, 0, 0, 0, book, hist_p95={34: 4.5})
+        assert mc_o == pytest.approx(450.0)
+
+
 class TestScenario:
     def test_instant_both_sides(self):
         # cost 100 mats + 10 job; sell 1 unit at 200; tax 10%; no broker

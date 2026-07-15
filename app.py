@@ -46,6 +46,7 @@ class State:
         self.cost_indices: dict[int, dict] = {}
         self.volumes: dict[int, float] = {}                      # type_id -> avg daily volume
         self.hist_prices: dict[int, dict] = {}                   # type_id -> {"p5": .., "p95": ..}
+        self.bpo_sell_types: set[int] | None = None              # region-wide sell presence (None = unknown)
         self.rows: list[dict] = []
 
         self.history_total = 0
@@ -112,6 +113,7 @@ def refresh_prices(force: bool):
         S.adjusted = adjusted
         S.cost_indices = indices
         S.book = book
+        S.bpo_sell_types = S.esi.region_sell_types()
 
     recompute()
     _set("ready", "")
@@ -184,28 +186,14 @@ def compute_row(p: sde_mod.Product) -> dict:
     )
     jcost = calc.job_cost(eiv, sci, st.structure_tax, st.structure_cost_bonus)
 
-    # Material cost for the whole job, two buy methods
-    cost_instant = 0.0   # buy from sell orders, volume-weighted
-    cost_orders = 0.0    # own buy orders at best bid (broker fee added in scenario)
-    instant_ok = orders_ok = True
-    for m in mats:
-        qty = calc.material_quantity(
-            m.base_qty, runs, me, st.structure_material_bonus, st.structure_rig_material_bonus
-        )
-        b = S.book.get(m.type_id, {"buy": [], "sell": []})
-        vw = calc.volume_weighted_price(b["sell"], qty)
-        # a lowball bid on an illiquid material won't fill: floor by history p95
-        bid = calc.realistic_buy_price(
-            calc.best_price(b["buy"]), S.hist_prices.get(m.type_id, {}).get("p95")
-        )
-        if vw is None:
-            instant_ok = False
-        else:
-            cost_instant += vw * qty
-        if bid is None:
-            orders_ok = False
-        else:
-            cost_orders += bid * qty
+    # Material cost for the whole job, two buy methods; every input is priced
+    # from the Jita book by type_id (buy-order side floored by history p95)
+    mc_i, mc_o, unpriceable = calc.job_material_cost(
+        [(m.type_id, m.base_qty) for m in mats],
+        runs, me, st.structure_material_bonus, st.structure_rig_material_bonus,
+        S.book,
+        {m.type_id: S.hist_prices.get(m.type_id, {}).get("p95") for m in mats},
+    )
 
     pb = S.book.get(p.type_id, {"buy": [], "sell": []})
     units = p.quantity_per_run * runs
@@ -215,9 +203,6 @@ def compute_row(p: sde_mod.Product) -> dict:
     top_ask = calc.best_price(pb["sell"])
     hist_p5 = S.hist_prices.get(p.type_id, {}).get("p5")
     sell_order_unit = calc.realistic_sell_price(top_ask, hist_p5)
-
-    mc_i = cost_instant if instant_ok else None
-    mc_o = cost_orders if orders_ok else None
 
     sc = {}
     for key, (mc, buy_broker, rev, sell_broker) in {
@@ -268,10 +253,16 @@ def compute_row(p: sde_mod.Product) -> dict:
         "me": me,
         "te": te,
         "has_override": str(p.blueprint_type_id) in st.blueprint_overrides,
-        "bpc_only": not p.bpo_on_market,
+        # BPC-only: no market group in the SDE, or no live sell order for the
+        # blueprint anywhere in The Forge (catches unseeded event BPOs)
+        "bpc_only": not p.bpo_on_market or (
+            S.bpo_sell_types is not None
+            and p.blueprint_type_id not in S.bpo_sell_types
+        ),
         "suspicious": suspicious,
         "low_liquidity": low_liquidity,
         "wide_spread": wide_spread,
+        "unpriceable": bool(unpriceable),
         "scenarios": sc,
     }
 

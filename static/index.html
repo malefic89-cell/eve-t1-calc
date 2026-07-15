@@ -101,7 +101,7 @@ td.health.neg { background: rgba(248, 81, 73, .10); }
     <option value="order_sell">Order → Inst</option>
     <option value="order_order">Order → Order</option>
   </select>
-  <label class="dim"><input type="checkbox" id="fBpc" style="vertical-align:middle"> BPC/susp<span class="help" data-tip="Показать скрытые по умолчанию строки: чертёж не купить на рынке (BPC-only: ивентовые корабли SoCT/EDENCOM, бустеры, акселераторы), подозрительные данные SDE (пустой рецепт или себестоимость < 1% цены продажи), широкий спред на неликвиде (ask/bid > 3 при < 100 шт/день). Их маржа обманчива.">?</span></label>
+  <label class="dim"><input type="checkbox" id="fBpc" style="vertical-align:middle"> BPC/susp<span class="help" data-tip="Показать скрытые по умолчанию строки: чертёж не купить на рынке (нет маркет-группы в SDE или нет живых sell-ордеров на BPO в The Forge — ивентовые корабли SoCT/EDENCOM, бустеры, акселераторы), подозрительные данные SDE (пустой рецепт или себестоимость < 1% цены продажи), широкий спред на неликвиде (ask/bid > 3 при < 100 шт/день), некупибельные материалы. Их маржа обманчива.">?</span></label>
   <span class="dim" id="rowCount"></span>
 </div>
 
@@ -224,6 +224,7 @@ const badges = r =>
   (r.bpc_only ? `<span class="badge" title="Чертёж не продаётся на рынке (BPC-only, ивентовый дроп)">BPC</span>` : "") +
   (r.suspicious ? `<span class="badge warn" title="Подозрительные данные SDE: пустой рецепт или себестоимость < 1% цены продажи">⚠ data</span>` : "") +
   (r.wide_spread ? `<span class="badge warn" title="Широкий спред при низком объёме (ask/bid > 3, < 100 шт/день): маржа между ордерами не выкупается">spread</span>` : "") +
+  (r.unpriceable ? `<span class="badge warn" title="Часть материалов невозможно купить с sell-ордеров в Jita в нужном количестве — реальная себестоимость неизвестна">no input</span>` : "") +
   (r.low_liquidity ? `<span class="badge warn" title="Низкая ликвидность: произведённое за job количество превышает N дней среднего объёма торгов (настройка Max days to sell)">low liq</span>` : "");
 
 function render() {
@@ -236,7 +237,7 @@ function render() {
   const grp = document.getElementById("fGroup").value;
   const showBpc = document.getElementById("fBpc").checked;
   let rows = ROWS.filter(r => {
-    if (!showBpc && (r.bpc_only || r.suspicious || r.wide_spread)) return false;
+    if (!showBpc && (r.bpc_only || r.suspicious || r.wide_spread || r.unpriceable)) return false;
     if (q && !r.name.toLowerCase().includes(q)) return false;
     if (cat && r.category !== cat) return false;
     if (grp && r.group !== grp) return false;

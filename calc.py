@@ -156,6 +156,53 @@ def realistic_buy_price(top_bid: float | None, hist_high: float | None) -> float
     return max(top_bid, hist_high)
 
 
+def job_material_cost(
+    materials: list[tuple[int, int]],
+    runs: int,
+    me: int,
+    structure_bonus_pct: float,
+    rig_bonus_pct: float,
+    book: dict,
+    hist_p95: dict | None = None,
+) -> tuple[float | None, float | None, list[int]]:
+    """Material cost for a whole job, both buy methods.
+
+    Every input — mineral, component or finished module — is priced from the
+    order book by its type_id; nothing ever falls back to 0 or adjusted price.
+
+    materials: [(type_id, base_qty), ...]
+    book:      {type_id: {"buy": [[price, vol], ...], "sell": [...]}}
+    hist_p95:  {type_id: p95 or None} floor for own buy orders
+
+    Returns (cost_instant, cost_orders, unpriceable): a cost is None when any
+    input can't be priced that way; unpriceable lists inputs whose required
+    quantity can't be bought from sell orders at all.
+    """
+    hist_p95 = hist_p95 or {}
+    cost_instant = cost_orders = 0.0
+    instant_ok = orders_ok = True
+    unpriceable = []
+    for type_id, base_qty in materials:
+        qty = material_quantity(base_qty, runs, me, structure_bonus_pct, rig_bonus_pct)
+        b = book.get(type_id, {"buy": [], "sell": []})
+        vw = volume_weighted_price(b["sell"], qty)
+        bid = realistic_buy_price(best_price(b["buy"]), hist_p95.get(type_id))
+        if vw is None:
+            instant_ok = False
+            unpriceable.append(type_id)
+        else:
+            cost_instant += vw * qty
+        if bid is None:
+            orders_ok = False
+        else:
+            cost_orders += bid * qty
+    return (
+        cost_instant if instant_ok else None,
+        cost_orders if orders_ok else None,
+        unpriceable,
+    )
+
+
 # ---------- scenarios ----------
 
 @dataclass

@@ -132,6 +132,12 @@ class ESIClient:
             if progress_cb:
                 progress_cb(page, pages)
 
+        # Region-wide sell presence: BPOs are seeded at NPC stations all over
+        # The Forge, not just Jita 4-4, so this set (not the 4-4 book) is what
+        # decides whether a blueprint is actually purchasable.
+        sell_types = sorted({o["type_id"] for o in all_orders if not o["is_buy_order"]})
+        self._cache_put(f"sell_types_{THE_FORGE}", sell_types)
+
         book: dict[int, dict[str, list]] = {}
         for o in all_orders:
             if o["location_id"] != JITA_44:
@@ -146,6 +152,13 @@ class ESIClient:
 
         self._cache_put(key, book)
         return book
+
+    def region_sell_types(self) -> set[int] | None:
+        """type_ids with at least one active sell order anywhere in The Forge,
+        captured by the last order fetch. None if not captured yet (pre-existing
+        cache from an older version) — callers should then skip the check."""
+        cached = self._cache_get(f"sell_types_{THE_FORGE}", ORDERS_TTL)
+        return set(cached) if cached is not None else None
 
     def history(self, type_id: int, force: bool = False) -> list[dict]:
         key = f"history_{type_id}"

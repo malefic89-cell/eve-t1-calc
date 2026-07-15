@@ -149,8 +149,6 @@ def _bp_params(blueprint_type_id: int) -> tuple[int, int, int]:
 def compute_row(p: sde_mod.Product) -> dict:
     st = S.settings
     mats = S.materials.get(p.blueprint_type_id, [])
-    if not mats:
-        return {}
     me, te, runs = _bp_params(p.blueprint_type_id)
 
     sci = S.cost_indices.get(st.system_id, {}).get("manufacturing", 0.0)
@@ -203,6 +201,14 @@ def compute_row(p: sde_mod.Product) -> dict:
         s = calc.scenario(mc, jcost, rev, units, buy_broker, sell_broker, broker, tax, t_run * runs)
         sc[key] = {"profit": s.profit_per_run, "margin": s.margin_pct, "iph": s.isk_per_hour}
 
+    # Sanity check: an empty recipe or a production cost under 1% of the sell
+    # price means degenerate SDE data (e.g. a 398 ISK battleship) — flag it.
+    suspicious = not mats
+    best_mc = mc_i if mc_i is not None else mc_o
+    rev_unit = sell_order_unit if sell_order_unit is not None else sell_instant_unit
+    if not suspicious and best_mc is not None and rev_unit:
+        suspicious = (best_mc + jcost) < 0.01 * rev_unit * units
+
     return {
         "type_id": p.type_id,
         "name": p.name,
@@ -220,6 +226,8 @@ def compute_row(p: sde_mod.Product) -> dict:
         "me": me,
         "te": te,
         "has_override": str(p.blueprint_type_id) in st.blueprint_overrides,
+        "bpc_only": not p.bpo_on_market,
+        "suspicious": suspicious,
         "scenarios": sc,
     }
 

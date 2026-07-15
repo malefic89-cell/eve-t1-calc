@@ -79,6 +79,9 @@ class Product:
     base_time: int  # seconds, unmodified
     group_name: str
     category_name: str
+    # Blueprint is buyable as a BPO: published and has a market group.
+    # False = BPC-only (event drops like Praxis/Gnosis, boosters, EDENCOM).
+    bpo_on_market: bool = True
 
 
 class SDE:
@@ -99,7 +102,8 @@ class SDE:
                    p.quantity,
                    a.time          AS base_time,
                    g.groupName,
-                   c.categoryName
+                   c.categoryName,
+                   (bp.published = 1 AND bp.marketGroupID IS NOT NULL) AS bpo_market
             FROM industryActivityProducts p
             JOIN invTypes t  ON t.typeID = p.productTypeID
             JOIN invTypes bp ON bp.typeID = p.typeID
@@ -110,7 +114,6 @@ class SDE:
             LEFT JOIN invMetaTypes m ON m.typeID = p.productTypeID
             WHERE p.activityID = ?
               AND t.published = 1
-              AND bp.published = 1
               AND (m.metaGroupID IS NULL OR m.metaGroupID IN (%s))
             """
             % ",".join("?" * len(T1_META_GROUPS)),
@@ -125,6 +128,7 @@ class SDE:
                 base_time=r["base_time"],
                 group_name=r["groupName"],
                 category_name=r["categoryName"],
+                bpo_on_market=bool(r["bpo_market"]),
             )
             for r in rows
         ]

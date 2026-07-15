@@ -39,6 +39,10 @@ th.sorted::after { content: " ▾"; color: var(--accent); }
 th.sorted.asc::after { content: " ▴"; }
 tbody tr:hover { background: #161b22; cursor: pointer; }
 .pos { color: var(--green); } .neg { color: var(--red); } .dim { color: var(--dim); }
+.badge { display: inline-block; padding: 0 5px; border-radius: 4px; font-size: 10px;
+  font-weight: 600; margin-left: 6px; vertical-align: middle;
+  background: #21262d; border: 1px solid var(--border); color: var(--dim); }
+.badge.warn { color: #d29922; border-color: #d29922; }
 #tablewrap { flex: 1 1 auto; overflow: auto; }
 #pager { display: none; gap: 10px; padding: 8px 16px; align-items: center;
   background: var(--panel); border-top: 1px solid var(--border); flex-shrink: 0; }
@@ -94,6 +98,7 @@ tbody tr:hover { background: #161b22; cursor: pointer; }
     <option value="order_sell">Order → Inst</option>
     <option value="order_order">Order → Order</option>
   </select>
+  <label class="dim"><input type="checkbox" id="fBpc" style="vertical-align:middle"> BPC/susp<span class="help" data-tip="Показать предметы, чертежи которых нельзя купить на рынке (BPC-only: ивентовые корабли SoCT/EDENCOM, бустеры, акселераторы) и строки с подозрительными данными SDE (пустой список материалов или себестоимость < 1% цены продажи). По умолчанию скрыты — их маржа обманчива, если чертёж не достался бесплатно.">?</span></label>
   <span class="dim" id="rowCount"></span>
 </div>
 
@@ -208,6 +213,9 @@ function metric(r, key) {
   }
 }
 const curScenario = () => document.getElementById("fScenario").value;
+const badges = r =>
+  (r.bpc_only ? `<span class="badge" title="Чертёж не продаётся на рынке (BPC-only, ивентовый дроп)">BPC</span>` : "") +
+  (r.suspicious ? `<span class="badge warn" title="Подозрительные данные SDE: пустой рецепт или себестоимость < 1% цены продажи">⚠ data</span>` : "");
 
 function render() {
   const q = document.getElementById("fSearch").value.toLowerCase();
@@ -217,7 +225,9 @@ function render() {
   const scen = curScenario();
 
   const grp = document.getElementById("fGroup").value;
+  const showBpc = document.getElementById("fBpc").checked;
   let rows = ROWS.filter(r => {
+    if (!showBpc && (r.bpc_only || r.suspicious)) return false;
     if (q && !r.name.toLowerCase().includes(q)) return false;
     if (cat && r.category !== cat) return false;
     if (grp && r.group !== grp) return false;
@@ -248,7 +258,7 @@ function render() {
   document.getElementById("tbody").innerHTML = rows.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE).map(r => {
     const s = r.scenarios[scen];
     return `<tr onclick="openDetail(${r.type_id})">
-      <td class="left name" title="${r.name}">${r.name}</td>
+      <td class="left name" title="${r.name}">${r.name}${badges(r)}</td>
       <td class="left dim grp" title="${r.category} / ${r.group}">${r.group}</td>
       <td>${fmt(r.runs)}</td>
       <td title="${fmtIsk(r.material_cost_instant)}">${fmtC(r.material_cost_instant)}</td>
@@ -274,7 +284,7 @@ document.querySelectorAll("th").forEach(th => th.onclick = () => {
   page = 0;
   render();
 });
-["fSearch","fCategory","fGroup","fMargin","fVolume","fScenario"].forEach(id =>
+["fSearch","fCategory","fGroup","fMargin","fVolume","fScenario","fBpc"].forEach(id =>
   document.getElementById(id).addEventListener("input", () => { page = 0; render(); }));
 
 document.getElementById("pgPrev").onclick = () => {
@@ -435,7 +445,7 @@ async function openDetail(typeId) {
     order_sell: "Buy orders → Sell instant", order_order: "Buy orders → Sell order"};
   document.getElementById("detailBody").innerHTML = `
     <button class="close" onclick="closeModal('detailModal')">✕</button>
-    <h2>${r.name}</h2>
+    <h2>${r.name}${badges(r)}</h2>
     <p class="dim">${r.category} / ${r.group} · ${r.qty_per_run} per run ·
       ${(r.time_per_run_s/60).toFixed(1)} min/run · job: ${r.runs} run${r.runs > 1 ? "s" : ""} ·
       job cost ${fmtIsk(r.job_cost)} ISK</p>

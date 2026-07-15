@@ -44,6 +44,10 @@ class Settings:
     # order book depth walked, EIV and total time
     runs: int = 1
 
+    # Liquidity: a job's output beyond this many days of average daily
+    # volume gets a "low liquidity" warning on the row
+    max_days_to_sell: int = 3
+
     def validate(self) -> None:
         for name in ("accounting", "broker_relations", "industry", "advanced_industry"):
             v = getattr(self, name)
@@ -61,6 +65,9 @@ class Settings:
         self.runs = int(self.runs)
         if not 1 <= self.runs <= 1_000_000:
             raise ValueError("runs must be >= 1")
+        self.max_days_to_sell = int(self.max_days_to_sell)
+        if not 1 <= self.max_days_to_sell <= 365:
+            raise ValueError("max_days_to_sell must be 1-365")
         clean = {}
         for k, ov in (self.blueprint_overrides or {}).items():
             entry = {}

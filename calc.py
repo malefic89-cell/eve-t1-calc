@@ -120,6 +120,42 @@ def best_price(orders: list[list[float]]) -> float | None:
     return orders[0][0] if orders else None
 
 
+# ---------- realistic pricing from market history ----------
+
+def percentile_price(history: list[dict], pct: float, days: int = 30) -> float | None:
+    """Percentile (linear interpolation) of daily average prices.
+
+    Takes the last `days` history entries (ESI only lists days with trades,
+    so this is "the last up-to-30 traded days"). None if there is no history.
+    """
+    prices = sorted(d["average"] for d in history[-days:] if d.get("average") is not None)
+    if not prices:
+        return None
+    k = (len(prices) - 1) * pct / 100
+    lo, hi = math.floor(k), math.ceil(k)
+    return prices[lo] + (prices[hi] - prices[lo]) * (k - lo)
+
+
+def realistic_sell_price(top_ask: float | None, hist_low: float | None) -> float | None:
+    """Achievable own-sell-order price: the top ask on thin markets is a
+    wishful listing, so cap it by a low percentile of traded prices."""
+    if top_ask is None:
+        return hist_low
+    if hist_low is None:
+        return top_ask
+    return min(top_ask, hist_low)
+
+
+def realistic_buy_price(top_bid: float | None, hist_high: float | None) -> float | None:
+    """Achievable own-buy-order price: a lowball bid on an illiquid material
+    won't fill, so floor it by a high percentile of traded prices."""
+    if top_bid is None:
+        return hist_high
+    if hist_high is None:
+        return top_bid
+    return max(top_bid, hist_high)
+
+
 # ---------- scenarios ----------
 
 @dataclass

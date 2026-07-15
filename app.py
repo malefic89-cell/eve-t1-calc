@@ -45,6 +45,7 @@ class State:
         self.adjusted: dict[int, float] = {}
         self.cost_indices: dict[int, dict] = {}
         self.volumes: dict[int, float] = {}                      # type_id -> avg daily volume
+        self.hist_prices: dict[int, dict] = {}                   # type_id -> {"p5": .., "p95": ..}
         self.rows: list[dict] = []
 
         self.history_total = 0
@@ -116,14 +117,34 @@ def refresh_prices(force: bool):
     _set("ready", "")
 
 
-def _load_cached_volumes():
-    vols = {}
-    for p in S.products:
-        age = S.esi.cache_age(f"history_{p.type_id}")
+def _history_type_ids() -> list[int]:
+    """Products plus every distinct material: materials need history too,
+    for the achievable buy-order price (p95)."""
+    ids = {p.type_id for p in S.products}
+    for mats in S.materials.values():
+        ids.update(m.type_id for m in mats)
+    return sorted(ids)
+
+
+def _hist_stats(hist: list[dict]) -> dict:
+    return {
+        "p5": calc.percentile_price(hist, 5),
+        "p95": calc.percentile_price(hist, 95),
+    }
+
+
+def _load_cached_history():
+    """(volumes, hist_prices) from week-old-or-fresher on-disk cache."""
+    vols, prices = {}, {}
+    product_ids = {p.type_id for p in S.products}
+    for tid in _history_type_ids():
+        age = S.esi.cache_age(f"history_{tid}")
         if age is not None and age < 24 * 3600 * 7:  # tolerate week-old cache for display
-            hist = S.esi.history(p.type_id)
-            vols[p.type_id] = _avg_daily_volume(hist)
-    return vols
+            hist = S.esi.history(tid)
+            prices[tid] = _hist_stats(hist)
+            if tid in product_ids:
+                vols[tid] = _avg_daily_volume(hist)
+    return vols, prices
 
 
 def _avg_daily_volume(history: list[dict], days: int = 7) -> float:
@@ -173,7 +194,10 @@ def compute_row(p: sde_mod.Product) -> dict:
         )
         b = S.book.get(m.type_id, {"buy": [], "sell": []})
         vw = calc.volume_weighted_price(b["sell"], qty)
-        bid = calc.best_price(b["buy"])
+        # a lowball bid on an illiquid material won't fill: floor by history p95
+        bid = calc.realistic_buy_price(
+            calc.best_price(b["buy"]), S.hist_prices.get(m.type_id, {}).get("p95")
+        )
         if vw is None:
             instant_ok = False
         else:
@@ -186,7 +210,11 @@ def compute_row(p: sde_mod.Product) -> dict:
     pb = S.book.get(p.type_id, {"buy": [], "sell": []})
     units = p.quantity_per_run * runs
     sell_instant_unit = calc.volume_weighted_price(pb["buy"], units)  # dump to buy orders
-    sell_order_unit = calc.best_price(pb["sell"])                     # own sell order at best ask
+    # own sell order: top ask capped by history p5 — the top ask on a thin
+    # market is a wishful listing, not an achievable price
+    top_ask = calc.best_price(pb["sell"])
+    hist_p5 = S.hist_prices.get(p.type_id, {}).get("p5")
+    sell_order_unit = calc.realistic_sell_price(top_ask, hist_p5)
 
     mc_i = cost_instant if instant_ok else None
     mc_o = cost_orders if orders_ok else None
@@ -209,6 +237,18 @@ def compute_row(p: sde_mod.Product) -> dict:
     if not suspicious and best_mc is not None and rev_unit:
         suspicious = (best_mc + jcost) < 0.01 * rev_unit * units
 
+    # Liquidity flags
+    vol = S.volumes.get(p.type_id)
+    low_liquidity = vol is not None and units > vol * st.max_days_to_sell
+    top_bid = calc.best_price(pb["buy"])
+    # no asks at all is the extreme of a thin market: fall back to history p5
+    eff_ask = top_ask if top_ask is not None else hist_p5
+    wide_spread = (
+        vol is not None and vol < 100
+        and eff_ask is not None
+        and eff_ask / max(top_bid or 0.0, 1.0) > 3
+    )
+
     return {
         "type_id": p.type_id,
         "name": p.name,
@@ -221,13 +261,17 @@ def compute_row(p: sde_mod.Product) -> dict:
         "material_cost_orders": mc_o,
         "job_cost": jcost,
         "sell_to_buy_orders": sell_instant_unit,
-        "sell_via_sell_order": sell_order_unit,
+        "sell_via_sell_order": sell_order_unit,   # realistic: min(top ask, history p5)
+        "sell_top_ask": top_ask,
+        "sell_hist_p5": hist_p5,
         "daily_volume": S.volumes.get(p.type_id),
         "me": me,
         "te": te,
         "has_override": str(p.blueprint_type_id) in st.blueprint_overrides,
         "bpc_only": not p.bpo_on_market,
         "suspicious": suspicious,
+        "low_liquidity": low_liquidity,
+        "wide_spread": wide_spread,
         "scenarios": sc,
     }
 
@@ -246,22 +290,27 @@ def recompute():
 # ---------------- history fetching ----------------
 
 def fetch_history_background():
+    ids = _history_type_ids()
+    product_ids = {p.type_id for p in S.products}
     with S.lock:
         if S.history_running:
             return
         S.history_running = True
-        S.history_total = len(S.products)
+        S.history_total = len(ids)
         S.history_done = 0
 
-    def one(p):
+    def one(tid):
         try:
-            hist = S.esi.history(p.type_id)
+            hist = S.esi.history(tid)
         except Exception:
-            log.warning("history fetch failed for type %d", p.type_id, exc_info=True)
+            log.warning("history fetch failed for type %d", tid, exc_info=True)
             hist = []
+        stats = _hist_stats(hist)
         vol = _avg_daily_volume(hist)
         with S.lock:
-            S.volumes[p.type_id] = vol
+            S.hist_prices[tid] = stats
+            if tid in product_ids:
+                S.volumes[tid] = vol
             S.history_done += 1
             done = S.history_done
         if done % 250 == 0:  # let the table fill in progressively
@@ -269,7 +318,7 @@ def fetch_history_background():
 
     try:
         with concurrent.futures.ThreadPoolExecutor(max_workers=10) as ex:
-            list(ex.map(one, S.products))
+            list(ex.map(one, ids))
     finally:
         with S.lock:
             S.history_running = False
@@ -285,7 +334,9 @@ def on_startup():
 
 def _after_bootstrap():
     if S.status == "ready":
-        S.volumes.update(_load_cached_volumes())
+        vols, prices = _load_cached_history()
+        S.volumes.update(vols)
+        S.hist_prices.update(prices)
         recompute()
         # Fresh cache entries are served from disk, so this only hits ESI
         # for types whose history is stale or missing.
@@ -389,6 +440,9 @@ def item_detail(type_id: int):
             "qty_with_me": qty,
             "vw_sell_price": calc.volume_weighted_price(b["sell"], qty),
             "best_buy_price": calc.best_price(b["buy"]),
+            "buy_realistic": calc.realistic_buy_price(
+                calc.best_price(b["buy"]), S.hist_prices.get(m.type_id, {}).get("p95")
+            ),
             "adjusted_price": S.adjusted.get(m.type_id, 0.0),
         })
     row = compute_row(p)

@@ -109,6 +109,56 @@ class TestVolumeWeightedPrice:
         assert calc.volume_weighted_price([[10.0, 10]], 0) is None
 
 
+class TestPercentilePrice:
+    def _hist(self, prices):
+        return [{"average": p, "volume": 1} for p in prices]
+
+    def test_empty(self):
+        assert calc.percentile_price([], 5) is None
+
+    def test_single_day(self):
+        assert calc.percentile_price(self._hist([100.0]), 5) == pytest.approx(100.0)
+
+    def test_median(self):
+        assert calc.percentile_price(self._hist([10, 20, 30]), 50) == pytest.approx(20.0)
+
+    def test_p5_interpolates(self):
+        # 11 sorted values 0..100 step 10: p5 -> k=0.5 -> 5.0
+        assert calc.percentile_price(self._hist(list(range(0, 101, 10))), 5) == pytest.approx(5.0)
+
+    def test_uses_last_days_only(self):
+        # old spike outside the 30-entry window is ignored
+        hist = self._hist([1000.0] + [10.0] * 30)
+        assert calc.percentile_price(hist, 95, days=30) == pytest.approx(10.0)
+
+    def test_unsorted_input(self):
+        assert calc.percentile_price(self._hist([30, 10, 20]), 0) == pytest.approx(10.0)
+
+
+class TestRealisticPrices:
+    def test_sell_caps_wishful_ask(self):
+        assert calc.realistic_sell_price(1000.0, 100.0) == pytest.approx(100.0)
+
+    def test_sell_keeps_competitive_ask(self):
+        assert calc.realistic_sell_price(90.0, 100.0) == pytest.approx(90.0)
+
+    def test_sell_none_handling(self):
+        assert calc.realistic_sell_price(None, 100.0) == pytest.approx(100.0)
+        assert calc.realistic_sell_price(90.0, None) == pytest.approx(90.0)
+        assert calc.realistic_sell_price(None, None) is None
+
+    def test_buy_floors_lowball_bid(self):
+        assert calc.realistic_buy_price(1.0, 50.0) == pytest.approx(50.0)
+
+    def test_buy_keeps_competitive_bid(self):
+        assert calc.realistic_buy_price(60.0, 50.0) == pytest.approx(60.0)
+
+    def test_buy_none_handling(self):
+        assert calc.realistic_buy_price(None, 50.0) == pytest.approx(50.0)
+        assert calc.realistic_buy_price(60.0, None) == pytest.approx(60.0)
+        assert calc.realistic_buy_price(None, None) is None
+
+
 class TestScenario:
     def test_instant_both_sides(self):
         # cost 100 mats + 10 job; sell 1 unit at 200; tax 10%; no broker

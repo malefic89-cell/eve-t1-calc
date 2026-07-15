@@ -43,6 +43,9 @@ tbody tr:hover { background: #161b22; cursor: pointer; }
   font-weight: 600; margin-left: 6px; vertical-align: middle;
   background: #21262d; border: 1px solid var(--border); color: var(--dim); }
 .badge.warn { color: #d29922; border-color: #d29922; }
+/* liquidity health tint: is the item profitable even dumped instantly? */
+td.health.pos { background: rgba(63, 185, 80, .10); }
+td.health.neg { background: rgba(248, 81, 73, .10); }
 #tablewrap { flex: 1 1 auto; overflow: auto; }
 #pager { display: none; gap: 10px; padding: 8px 16px; align-items: center;
   background: var(--panel); border-top: 1px solid var(--border); flex-shrink: 0; }
@@ -98,7 +101,7 @@ tbody tr:hover { background: #161b22; cursor: pointer; }
     <option value="order_sell">Order → Inst</option>
     <option value="order_order">Order → Order</option>
   </select>
-  <label class="dim"><input type="checkbox" id="fBpc" style="vertical-align:middle"> BPC/susp<span class="help" data-tip="Показать предметы, чертежи которых нельзя купить на рынке (BPC-only: ивентовые корабли SoCT/EDENCOM, бустеры, акселераторы) и строки с подозрительными данными SDE (пустой список материалов или себестоимость < 1% цены продажи). По умолчанию скрыты — их маржа обманчива, если чертёж не достался бесплатно.">?</span></label>
+  <label class="dim"><input type="checkbox" id="fBpc" style="vertical-align:middle"> BPC/susp<span class="help" data-tip="Показать скрытые по умолчанию строки: чертёж не купить на рынке (BPC-only: ивентовые корабли SoCT/EDENCOM, бустеры, акселераторы), подозрительные данные SDE (пустой рецепт или себестоимость < 1% цены продажи), широкий спред на неликвиде (ask/bid > 3 при < 100 шт/день). Их маржа обманчива.">?</span></label>
   <span class="dim" id="rowCount"></span>
 </div>
 
@@ -112,8 +115,8 @@ tbody tr:hover { background: #161b22; cursor: pointer; }
     <th data-k="runs">Runs<span class="help" data-tip="Число прогонов, по которому посчитана строка: значение из панели фильтров или индивидуальное для чертежа (задаётся в деталях). Все денежные колонки — на весь job.">?</span></th>
     <th data-k="cost">Cost/job<span class="help" data-tip="Стоимость материалов на весь job при мгновенной покупке с sell-ордеров Jita 4-4. Цена взвешена по глубине стакана — для больших партий она выше лучшего ордера.">?</span></th>
     <th data-k="job_cost">Job cost<span class="help" data-tip="Стоимость установки работы: EIV × индекс системы × (1 − бонус структуры) + налог структуры + 4% сбор SCC. EIV — сумма базовых материалов по adjusted-ценам CCP.">?</span></th>
-    <th data-k="sell_via_sell_order">Sell price<span class="help" data-tip="Цена за единицу при продаже своим sell-ордером (лучший текущий ask в Jita 4-4).">?</span></th>
-    <th data-k="p_buy_sell">P: inst→inst<span class="help" data-tip="Прибыль за job: материалы куплены мгновенно с sell-ордеров, продукт продан мгновенно в buy-ордера. Самый быстрый, но наименее выгодный сценарий. Учтён налог с продаж.">?</span></th>
+    <th data-k="sell_via_sell_order">Sell price<span class="help" data-tip="Реалистичная цена за единицу при продаже своим sell-ордером: минимум из лучшего ask в Jita 4-4 и 5-го перцентиля средних дневных цен за 30 дней истории. На неликвиде верхний ask — фантазия продавца, а не достижимая цена.">?</span></th>
+    <th data-k="p_buy_sell">P: inst→inst<span class="help" data-tip="Прибыль за job: материалы куплены мгновенно с sell-ордеров, продукт продан мгновенно в buy-ордера. Самый быстрый, но наименее выгодный сценарий. Учтён налог с продаж. Подсветка ячейки — индикатор здоровья рынка: если даже мгновенный слив в плюсе или лёгком минусе, спред реален; глубокий минус при «прибыльном» ордерном сценарии — признак неликвида.">?</span></th>
     <th data-k="p_buy_order">P: inst→order<span class="help" data-tip="Прибыль за job: материалы куплены мгновенно, продукт выставлен своим sell-ордером. Учтены налог с продаж и брокерская комиссия на продажу.">?</span></th>
     <th data-k="p_order_sell">P: ord→inst<span class="help" data-tip="Прибыль за job: материалы закуплены своими buy-ордерами (дешевле, но ждать), продукт продан мгновенно. Учтены брокерская комиссия на закупку и налог с продаж.">?</span></th>
     <th data-k="p_order_order">P: ord→ord<span class="help" data-tip="Прибыль за job: и закупка, и продажа своими ордерами. Максимальная маржа, но требует времени и присмотра за ордерами. Учтены обе брокерские комиссии и налог.">?</span></th>
@@ -162,6 +165,10 @@ tbody tr:hover { background: #161b22; cursor: pointer; }
       <div><label>Job cost bonus % (Raitaru 3, Azbel 4, Sotiyo 5)<span class="help" data-tip="Бонус профиля инженерного комплекса к стоимости работы: уменьшает часть EIV × индекс системы. Raitaru 3%, Azbel 4%, Sotiyo 5%; NPC-станция — 0.">?</span></label>
         <input type="number" step="0.1" id="s_structure_cost_bonus"></div>
     </div>
+    <h3>Liquidity</h3>
+    <div class="grid">
+      <div><label>Max days to sell<span class="help" data-tip="За сколько дней среднего дневного объёма торгов должен продаваться выпуск одного job. Если произведённое количество больше — строка получает бейдж low liq: продать быстро не выйдет, ордер будет висеть.">?</span></label><input type="number" min="1" max="365" id="s_max_days_to_sell"></div>
+    </div>
     <h3>Manufacturing system</h3>
     <div class="grid">
       <div style="grid-column: span 2">
@@ -181,7 +188,7 @@ tbody tr:hover { background: #161b22; cursor: pointer; }
 </div>
 
 <script>
-let ROWS = [], sortKey = "p_buy_order", sortAsc = false, SETTINGS = {}, selectedSystem = null;
+let ROWS = [], sortKey = "iph", sortAsc = false, SETTINGS = {}, selectedSystem = null;
 let page = 0;
 const PAGE_SIZE = 100;
 
@@ -215,7 +222,9 @@ function metric(r, key) {
 const curScenario = () => document.getElementById("fScenario").value;
 const badges = r =>
   (r.bpc_only ? `<span class="badge" title="Чертёж не продаётся на рынке (BPC-only, ивентовый дроп)">BPC</span>` : "") +
-  (r.suspicious ? `<span class="badge warn" title="Подозрительные данные SDE: пустой рецепт или себестоимость < 1% цены продажи">⚠ data</span>` : "");
+  (r.suspicious ? `<span class="badge warn" title="Подозрительные данные SDE: пустой рецепт или себестоимость < 1% цены продажи">⚠ data</span>` : "") +
+  (r.wide_spread ? `<span class="badge warn" title="Широкий спред при низком объёме (ask/bid > 3, < 100 шт/день): маржа между ордерами не выкупается">spread</span>` : "") +
+  (r.low_liquidity ? `<span class="badge warn" title="Низкая ликвидность: произведённое за job количество превышает N дней среднего объёма торгов (настройка Max days to sell)">low liq</span>` : "");
 
 function render() {
   const q = document.getElementById("fSearch").value.toLowerCase();
@@ -227,7 +236,7 @@ function render() {
   const grp = document.getElementById("fGroup").value;
   const showBpc = document.getElementById("fBpc").checked;
   let rows = ROWS.filter(r => {
-    if (!showBpc && (r.bpc_only || r.suspicious)) return false;
+    if (!showBpc && (r.bpc_only || r.suspicious || r.wide_spread)) return false;
     if (q && !r.name.toLowerCase().includes(q)) return false;
     if (cat && r.category !== cat) return false;
     if (grp && r.group !== grp) return false;
@@ -265,7 +274,7 @@ function render() {
       <td title="${fmtIsk(r.job_cost)}">${fmtC(r.job_cost)}</td>
       <td title="${fmtIsk(r.sell_via_sell_order)}">${fmtC(r.sell_via_sell_order)}</td>
       ${scKeys.map(k => { const p = r.scenarios[k].profit;
-        return `<td class="${cls(p)}" title="${fmtIsk(p)}">${fmtC(p)}</td>`; }).join("")}
+        return `<td class="${cls(p)}${k === "buy_sell" ? " health" : ""}" title="${fmtIsk(p)}">${fmtC(p)}</td>`; }).join("")}
       <td class="${cls(s.margin)}">${s.margin == null ? "—" : s.margin.toFixed(1)}</td>
       <td class="${cls(s.iph)}" title="${fmtIsk(s.iph)}">${fmtC(s.iph)}</td>
       <td title="${fmt(r.daily_volume)}">${r.daily_volume == null ? "—" : fmtC(Math.round(r.daily_volume))}</td>
@@ -393,7 +402,7 @@ document.getElementById("fRuns").addEventListener("input", () => {
 const S_FIELDS = ["accounting","broker_relations","industry","advanced_industry",
   "faction_standing","corp_standing","blueprint_me","blueprint_te",
   "structure_material_bonus","structure_rig_material_bonus","structure_time_bonus",
-  "structure_tax","structure_cost_bonus"];
+  "structure_tax","structure_cost_bonus","max_days_to_sell"];
 
 document.getElementById("btnSettings").onclick = async () => {
   SETTINGS = await (await fetch("/api/settings")).json();
@@ -449,6 +458,8 @@ async function openDetail(typeId) {
     <p class="dim">${r.category} / ${r.group} · ${r.qty_per_run} per run ·
       ${(r.time_per_run_s/60).toFixed(1)} min/run · job: ${r.runs} run${r.runs > 1 ? "s" : ""} ·
       job cost ${fmtIsk(r.job_cost)} ISK</p>
+    <p class="dim">Sell price: top ask ${fmtIsk(r.sell_top_ask)} · history p5 (30d) ${fmtIsk(r.sell_hist_p5)}
+      → realistic <b>${fmtIsk(r.sell_via_sell_order)}</b> ISK/unit</p>
     <p>
       <b>Blueprint:</b>
       ME <input type="number" min="0" max="10" id="bp_me" value="${r.me}" style="width:60px">
@@ -462,10 +473,11 @@ async function openDetail(typeId) {
     </p>
     <h3>Materials (per job, ME applied)</h3>
     <table><thead><tr><th class="left">Material</th><th>Base</th><th>With ME</th>
-      <th>Sell price (VW)</th><th>Best buy</th><th>Cost (instant)</th></tr></thead><tbody>
+      <th>Sell price (VW)</th><th>Buy order (real)</th><th>Cost (instant)</th></tr></thead><tbody>
       ${d.materials.map(m => `<tr>
         <td class="left">${m.name}</td><td>${fmt(m.base_qty)}</td><td>${fmt(m.qty_with_me)}</td>
-        <td>${fmtIsk(m.vw_sell_price)}</td><td>${fmtIsk(m.best_buy_price)}</td>
+        <td>${fmtIsk(m.vw_sell_price)}</td>
+        <td title="топ bid ${fmtIsk(m.best_buy_price)}, history p95 поднимает цену на неликвиде">${fmtIsk(m.buy_realistic)}</td>
         <td>${m.vw_sell_price == null ? "—" : fmtIsk(m.vw_sell_price * m.qty_with_me)}</td>
       </tr>`).join("")}
       <tr><td class="left"><b>Total (instant / via orders)</b></td><td></td><td></td><td></td><td></td>

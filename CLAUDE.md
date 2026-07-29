@@ -29,6 +29,25 @@ FastAPI backend + single-page frontend (`static/index.html`, vanilla JS, no buil
 
 `data/` (SDE, cache, settings) and `.venv/` are gitignored — never commit them.
 
+## Privacy rule (project-wide, applies to every change)
+
+**No personal data in tracked files — ever.** Not the user's email, real name,
+EVE character or corp names, GitHub handle, domain, IP addresses, tokens or
+API keys. This covers code, User-Agent strings, comments, docs, deploy configs,
+test fixtures and commit messages alike.
+
+- The ESI contact CCP asks for comes from the `EVE_CALC_CONTACT` env var
+  (`esi.ESI_CONTACT`), set on the machine — see `deploy/eve-t1-calc.service`.
+  Never hardcode a default value for it.
+- Docs use placeholders: `<ваш-аккаунт>`, `calc.example.com`, `you@example.com`.
+- `data/` (settings, ESI cache) is gitignored and holds the real values — that
+  is the only place they belong.
+- Before committing, check: `git grep -nIE "@[a-z0-9.-]+\.(com|net|org|ru)"`.
+  `tests/test_esi.py::test_user_agent_carries_no_personal_data` guards the UA.
+
+Personal data that already reached git history (the commit author email) is a
+separate problem — rewriting history needs a force-push, so ask first.
+
 ## Hard-won facts (do not re-derive)
 
 - **Job cost formula** (verified in-game to the ISK, regression test exists):

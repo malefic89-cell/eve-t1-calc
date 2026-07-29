@@ -17,7 +17,7 @@ apt update && apt install -y python3 python3-venv git nginx apache2-utils
 
 ```bash
 useradd -m -s /bin/bash eve
-git clone https://github.com/malefic89-cell/eve-t1-calc.git /opt/eve-t1-calc
+git clone https://github.com/<ваш-аккаунт>/eve-t1-calc.git /opt/eve-t1-calc
 chown -R eve:eve /opt/eve-t1-calc
 ```
 
@@ -35,6 +35,10 @@ sudo -u eve bash -c '
 
 ```bash
 cp /opt/eve-t1-calc/deploy/eve-t1-calc.service /etc/systemd/system/
+# CCP просит указывать контакт в User-Agent для ESI: раскомментируйте
+# Environment=EVE_CALC_CONTACT= и впишите свой адрес или имя персонажа.
+# Только здесь, на сервере — в репозиторий личные данные не попадают.
+nano /etc/systemd/system/eve-t1-calc.service
 systemctl daemon-reload
 systemctl enable --now eve-t1-calc
 ```

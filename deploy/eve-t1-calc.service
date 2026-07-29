@@ -7,6 +7,10 @@ Wants=network-online.target
 Type=simple
 User=eve
 WorkingDirectory=/opt/eve-t1-calc
+# CCP asks for a contact in the ESI User-Agent. Uncomment and put your own
+# address or character name here, on the server only — it is personal data and
+# must never be committed to the repo.
+#Environment=EVE_CALC_CONTACT=you@example.com
 ExecStart=/opt/eve-t1-calc/.venv/bin/uvicorn app:app --host 127.0.0.1 --port 8000
 Restart=on-failure
 RestartSec=5

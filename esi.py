@@ -5,8 +5,10 @@ import) can be layered on later by extending ESIClient with a token provider.
 """
 from __future__ import annotations
 
+import concurrent.futures
 import json
 import logging
+import os
 import threading
 import time
 from pathlib import Path
@@ -16,7 +18,18 @@ import requests
 log = logging.getLogger(__name__)
 
 ESI_BASE = "https://esi.evetech.net/latest"
-USER_AGENT = "eve-t1-calc/1.0 (local industry tool; malefic89@gmail.com)"
+
+# CCP asks for a contact in the User-Agent so they can reach whoever is hammering
+# ESI. That contact is personal data and must never be committed: set
+# EVE_CALC_CONTACT in the environment (see deploy/eve-t1-calc.service). Without
+# it the app still works — the UA just carries no contact.
+ESI_CONTACT = os.environ.get("EVE_CALC_CONTACT", "").strip()
+USER_AGENT = (
+    f"eve-t1-calc/1.0 (local industry tool; {ESI_CONTACT})" if ESI_CONTACT
+    else "eve-t1-calc/1.0 (local industry tool)"
+)
+
+ORDER_PAGE_WORKERS = 8        # parallel fetch of the ~400 Jita order pages
 
 THE_FORGE = 10000002
 JITA_44 = 60003760

@@ -43,7 +43,13 @@ PRICES_TTL = 60 * 60          # 1 hour
 
 
 class ESIError(Exception):
-    pass
+    """`status` is the HTTP status when ESI answered, None when it never did
+    (network failure, or 5xx/420 that outlived the retries). Callers must not
+    cache a negative result for the None case — see ESIClient.history."""
+
+    def __init__(self, message: str, status: int | None = None):
+        super().__init__(message)
+        self.status = status
 
 
 class ESIClient:
@@ -92,7 +98,7 @@ class ESIClient:
                 continue
             if 400 <= resp.status_code < 500:
                 # e.g. history returns 400 for type_ids that never trade
-                raise ESIError(f"{resp.status_code} for {path}")
+                raise ESIError(f"{resp.status_code} for {path}", status=resp.status_code)
             resp.raise_for_status()
             return resp
         raise ESIError(f"ESI kept failing for {path}")
@@ -181,8 +187,13 @@ class ESIClient:
                 return cached
         try:
             data = self._get(f"/markets/{THE_FORGE}/history/", {"type_id": type_id}).json()
-        except ESIError:
-            data = []
+        except ESIError as e:
+            if e.status is None or not 400 <= e.status < 500:
+                # ESI never answered: a transient failure must not be cached as
+                # "this type has no history" for the whole 24 h TTL — that
+                # silently zeroes the item's volume and drops its p5/p95.
+                raise
+            data = []  # 4xx: the type genuinely never trades
         self._cache_put(key, data)
         return data
 

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
+from datetime import date, timedelta
 
 SCC_SURCHARGE = 0.04  # 4% of EIV
 
@@ -134,6 +135,37 @@ def percentile_price(history: list[dict], pct: float, days: int = 30) -> float |
     k = (len(prices) - 1) * pct / 100
     lo, hi = math.floor(k), math.ceil(k)
     return prices[lo] + (prices[hi] - prices[lo]) * (k - lo)
+
+
+def avg_daily_volume(history: list[dict], today: date, days: int = 7) -> float:
+    """Units traded per CALENDAR day over the `days` days ending yesterday.
+
+    ESI history lists only days that had trades, so averaging the last N
+    entries by their own count gives volume per *traded* day: an item that
+    traded seven times in a year then looks as liquid as one trading daily.
+    Summing over a fixed calendar window instead makes untraded days count as
+    the zeroes they are, and an item that stopped trading decays to 0.
+
+    The window ends at `today - 1`: ESI publishes a day's aggregate only after
+    that day closes in UTC, so today never has usable data. `today` is passed
+    in rather than read from the clock to keep this module deterministic.
+    """
+    if not history or days <= 0:
+        return 0.0
+    last = today - timedelta(days=1)
+    first = last - timedelta(days=days - 1)
+    total = 0.0
+    for entry in reversed(history):  # ESI returns ascending by date
+        try:
+            day = date.fromisoformat(entry["date"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        if day > last:
+            continue
+        if day < first:
+            break
+        total += entry.get("volume") or 0
+    return total / days
 
 
 def realistic_sell_price(top_ask: float | None, hist_low: float | None) -> float | None:

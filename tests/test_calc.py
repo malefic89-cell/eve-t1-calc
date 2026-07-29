@@ -1,4 +1,5 @@
 import math
+from datetime import date, timedelta
 
 import pytest
 
@@ -133,6 +134,54 @@ class TestPercentilePrice:
 
     def test_unsorted_input(self):
         assert calc.percentile_price(self._hist([30, 10, 20]), 0) == pytest.approx(10.0)
+
+
+class TestAvgDailyVolume:
+    TODAY = date(2026, 7, 29)   # ESI's freshest entry is then 2026-07-28
+
+    def _hist(self, pairs):
+        """pairs: [(days_before_today, volume), ...] oldest first."""
+        return [
+            {"date": (self.TODAY - timedelta(days=d)).isoformat(), "volume": v}
+            for d, v in sorted(pairs, reverse=True)
+        ]
+
+    def test_dense_history(self):
+        hist = self._hist([(d, 100) for d in range(1, 8)])
+        assert calc.avg_daily_volume(hist, self.TODAY) == pytest.approx(100.0)
+
+    def test_untraded_days_count_as_zero(self):
+        # 700 units in a single day of the window is 100/day over 7 calendar
+        # days, not 700/day as dividing by the entry count would give
+        hist = self._hist([(3, 700)])
+        assert calc.avg_daily_volume(hist, self.TODAY) == pytest.approx(100.0)
+
+    def test_stale_item_decays_to_zero(self):
+        # the headline bug: 7 entries spanning a year used to report 4.2/day
+        hist = self._hist([(400 + 30 * i, 30) for i in range(7)])
+        assert calc.avg_daily_volume(hist, self.TODAY) == 0.0
+
+    def test_yesterday_counts_today_does_not(self):
+        # ESI only publishes a day's aggregate after it closes in UTC
+        assert calc.avg_daily_volume(self._hist([(1, 70)]), self.TODAY) == pytest.approx(10.0)
+        assert calc.avg_daily_volume(self._hist([(0, 70)]), self.TODAY) == 0.0
+
+    def test_window_edges(self):
+        assert calc.avg_daily_volume(self._hist([(7, 70)]), self.TODAY) == pytest.approx(10.0)
+        assert calc.avg_daily_volume(self._hist([(8, 70)]), self.TODAY) == 0.0
+
+    def test_older_entries_excluded(self):
+        hist = self._hist([(60, 10_000), (2, 70)])
+        assert calc.avg_daily_volume(hist, self.TODAY) == pytest.approx(10.0)
+
+    def test_empty_and_malformed(self):
+        assert calc.avg_daily_volume([], self.TODAY) == 0.0
+        assert calc.avg_daily_volume([{"volume": 5}], self.TODAY) == 0.0
+        assert calc.avg_daily_volume([{"date": "not-a-date", "volume": 5}], self.TODAY) == 0.0
+
+    def test_custom_window(self):
+        hist = self._hist([(d, 10) for d in range(1, 31)])
+        assert calc.avg_daily_volume(hist, self.TODAY, days=30) == pytest.approx(10.0)
 
 
 class TestRealisticPrices:

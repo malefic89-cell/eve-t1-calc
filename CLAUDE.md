@@ -60,11 +60,29 @@ separate problem — rewriting history needs a force-push, so ask first.
 - **ESI history returns 400** for type_ids that never trade — `esi._get`
   treats all 4xx as `ESIError`, and the history fetch pool must survive
   per-item failures. Don't "clean up" that error handling.
+- **`ESIError.status` separates "no data" from "no answer"**: 4xx carries the
+  status and `history()` caches `[]` for it; a network error or exhausted
+  5xx/420 retries carries `status=None` and must **propagate** — caching `[]`
+  there would zero the item's volume and drop its p5/p95 for the whole 24 h
+  TTL. `_record_history(tid, None, ...)` likewise keeps the cached stats
+  instead of overwriting them; only `[]` (a real "never traded") is recorded.
+- **`PUT /api/settings` merges** into the current settings. A field absent
+  from the payload keeps its value — building a fresh `Settings` from the
+  payload alone reset omitted fields to dataclass defaults and wiped
+  `blueprint_overrides` whenever the settings modal saved a stale snapshot.
+  Keep the frontend sending only the fields its modal owns.
 - **Fuzzwork SDE URL** is `latest-sqlite.db.gz` (gzip, not the old .bz2), and
   `industryActivityProducts` uses `typeID`/`productTypeID` columns.
 - The categories list must be derived from loaded products, not a raw SDE
   join on blueprint typeID (that returns only "Blueprint").
-- Daily volume = 7-day average and is fractional internally; display rounds
+- Daily volume is per **calendar** day, not per traded day: `calc.avg_daily_volume`
+  sums the 7-day window ending **yesterday UTC** and divides by 7, because ESI
+  history omits days with no trades. Dividing by the entry count overstated
+  illiquid items enormously (measured: 845 of 2195 types, up to 214k/day vs a
+  real 1.5k/day) and defeated both the Vol/day filter and the `low liq` badge.
+  The window ends yesterday since ESI publishes a day's aggregate only after it
+  closes; use UTC — the local date can be a day ahead. `today` is a parameter
+  so `calc` stays deterministic. Volume is fractional internally; display rounds
   to whole items. Money cells use compact `fmtC` (12.3k/4.56M) with the exact
   value in `title` — don't apply `fmtC`'s decimals to item counts.
 

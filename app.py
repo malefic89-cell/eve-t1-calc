@@ -5,8 +5,10 @@ Run: uvicorn app:app  (or `python app.py`)
 from __future__ import annotations
 
 import concurrent.futures
+import datetime
 import logging
 import threading
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
@@ -135,9 +137,15 @@ def _hist_stats(hist: list[dict]) -> dict:
     }
 
 
+def _utc_today() -> datetime.date:
+    """ESI history dates are UTC days — the local date can be a day ahead."""
+    return datetime.datetime.now(datetime.timezone.utc).date()
+
+
 def _load_cached_history():
     """(volumes, hist_prices) from week-old-or-fresher on-disk cache."""
     vols, prices = {}, {}
+    today = _utc_today()
     product_ids = {p.type_id for p in S.products}
     for tid in _history_type_ids():
         age = S.esi.cache_age(f"history_{tid}")
@@ -145,15 +153,8 @@ def _load_cached_history():
             hist = S.esi.history(tid)
             prices[tid] = _hist_stats(hist)
             if tid in product_ids:
-                vols[tid] = _avg_daily_volume(hist)
+                vols[tid] = calc.avg_daily_volume(hist, today)
     return vols, prices
-
-
-def _avg_daily_volume(history: list[dict], days: int = 7) -> float:
-    if not history:
-        return 0.0
-    recent = history[-days:]
-    return sum(d["volume"] for d in recent) / max(1, len(recent))
 
 
 # ---------------- computation ----------------
@@ -280,9 +281,28 @@ def recompute():
 
 # ---------------- history fetching ----------------
 
+def _record_history(tid: int, hist: list[dict] | None, product_ids: set[int], today) -> None:
+    """Store one type's history stats. `hist=None` means the fetch failed.
+
+    An empty list is real information (the type has never traded) and is
+    recorded; a failure is not, and must leave whatever we already loaded from
+    cache alone — overwriting it would silently drop the p95 floor under our
+    own buy orders and overstate the margin.
+    """
+    with S.lock:
+        if hist is None:
+            S.history_done += 1
+            return
+        S.hist_prices[tid] = _hist_stats(hist)
+        if tid in product_ids:
+            S.volumes[tid] = calc.avg_daily_volume(hist, today)
+        S.history_done += 1
+
+
 def fetch_history_background():
     ids = _history_type_ids()
     product_ids = {p.type_id for p in S.products}
+    today = _utc_today()
     with S.lock:
         if S.history_running:
             return
@@ -294,15 +314,10 @@ def fetch_history_background():
         try:
             hist = S.esi.history(tid)
         except Exception:
-            log.warning("history fetch failed for type %d", tid, exc_info=True)
-            hist = []
-        stats = _hist_stats(hist)
-        vol = _avg_daily_volume(hist)
+            log.warning("history fetch failed for type %d, keeping cached stats", tid)
+            hist = None
+        _record_history(tid, hist, product_ids, today)
         with S.lock:
-            S.hist_prices[tid] = stats
-            if tid in product_ids:
-                S.volumes[tid] = vol
-            S.history_done += 1
             done = S.history_done
         if done % 250 == 0:  # let the table fill in progressively
             recompute()
@@ -366,9 +381,15 @@ def get_settings():
 
 @app.put("/api/settings")
 def put_settings(payload: dict):
-    s = config.Settings(**{
+    # Merge into the current settings instead of building a fresh Settings:
+    # a field absent from the payload must keep its value, not silently fall
+    # back to the dataclass default. That default-reset used to wipe
+    # blueprint_overrides whenever the settings modal saved a stale snapshot.
+    merged = S.settings.to_dict()
+    merged.update({
         k: v for k, v in payload.items() if k in config.Settings.__dataclass_fields__
     })
+    s = config.Settings(**merged)
     try:
         s.validate()
     except ValueError as e:

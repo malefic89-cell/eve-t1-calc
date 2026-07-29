@@ -122,7 +122,7 @@ td.health.neg { background: rgba(248, 81, 73, .10); }
     <th data-k="p_order_order">P: ord→ord<span class="help" data-tip="Прибыль за job: и закупка, и продажа своими ордерами. Максимальная маржа, но требует времени и присмотра за ордерами. Учтены обе брокерские комиссии и налог.">?</span></th>
     <th data-k="margin">Margin %<span class="help" data-tip="Маржа выбранного в фильтре сценария: прибыль ÷ полные затраты × 100%.">?</span></th>
     <th data-k="iph">ISK/h<span class="help" data-tip="Прибыль в час для выбранного сценария: прибыль за job ÷ время производства job (с учётом TE, навыков и бонуса структуры).">?</span></th>
-    <th data-k="daily_volume">Daily vol<span class="help" data-tip="Средний дневной объём торгов в регионе The Forge за последние 7 дней. Показывает, сколько штук реально удастся продать.">?</span></th>
+    <th data-k="daily_volume">Daily vol<span class="help" data-tip="Средний объём торгов в регионе The Forge за последние 7 календарных дней (сумма ÷ 7). Дни без сделок считаются нулями, поэтому у неликвида здесь честный ноль, а не среднее по редким сделкам. Показывает, сколько штук в день реально удастся продать.">?</span></th>
   </tr></thead>
   <tbody id="tbody"></tbody>
 </table>
@@ -391,10 +391,10 @@ document.getElementById("fRuns").addEventListener("input", () => {
   runsTimer = setTimeout(async () => {
     const runs = parseInt(document.getElementById("fRuns").value);
     if (!runs || runs < 1) return;
-    const cur = await (await fetch("/api/settings")).json();
+    // the server merges, so a one-field PUT leaves everything else alone
     await fetch("/api/settings", {method: "PUT",
       headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({...cur, runs})});
+      body: JSON.stringify({runs})});
     loadItems();
   }, 400);
 });
@@ -437,7 +437,10 @@ document.getElementById("s_system_search").addEventListener("input", async e => 
 });
 
 document.getElementById("btnSaveSettings").onclick = async () => {
-  const payload = {...SETTINGS};
+  // Send only the fields this modal owns. Spreading the SETTINGS snapshot taken
+  // when the modal opened used to push back a stale blueprint_overrides and
+  // erase any per-blueprint ME/TE set meanwhile; the server merges the rest.
+  const payload = {};
   S_FIELDS.forEach(f => payload[f] = parseFloat(document.getElementById("s_" + f).value));
   if (selectedSystem) { payload.system_id = selectedSystem.system_id; payload.system_name = selectedSystem.name; }
   const r = await fetch("/api/settings", {method: "PUT",

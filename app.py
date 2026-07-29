@@ -218,6 +218,9 @@ def compute_row(p: sde_mod.Product) -> dict:
     hist_p5 = S.hist_prices.get(p.type_id, {}).get("p5")
     sell_order_unit = calc.realistic_sell_price(top_ask, hist_p5)
 
+    vol = S.volumes.get(p.type_id)
+    job_seconds = t_run * runs
+
     sc = {}
     for key, (mc, buy_broker, rev, sell_broker) in {
         "buy_sell": (mc_i, False, sell_instant_unit, False),     # instant buy -> instant sell
@@ -225,8 +228,16 @@ def compute_row(p: sde_mod.Product) -> dict:
         "order_sell": (mc_o, True, sell_instant_unit, False),    # own buy orders -> instant sell
         "order_order": (mc_o, True, sell_order_unit, True),      # own buy orders -> own sell order
     }.items():
-        s = calc.scenario(mc, jcost, rev, units, buy_broker, sell_broker, broker, tax, t_run * runs)
-        sc[key] = {"profit": s.profit_per_run, "margin": s.margin_pct, "iph": s.isk_per_hour}
+        s = calc.scenario(mc, jcost, rev, units, buy_broker, sell_broker, broker, tax, job_seconds)
+        sc[key] = {
+            "profit": s.profit_per_run,
+            "margin": s.margin_pct,
+            "iph": s.isk_per_hour,
+            # Same profit at the rate the market can actually absorb. Applied to
+            # every scenario: order-book depth already limits a single job, while
+            # daily volume is what limits *repeating* it, by any sell method.
+            "iph_real": calc.market_limited_iph(s.profit_per_run, units, job_seconds, vol),
+        }
 
     # Sanity check: an empty recipe or a production cost under 1% of the sell
     # price means degenerate SDE data (e.g. a 398 ISK battleship) — flag it.
@@ -237,7 +248,6 @@ def compute_row(p: sde_mod.Product) -> dict:
         suspicious = (best_mc + jcost) < 0.01 * rev_unit * units
 
     # Liquidity flags
-    vol = S.volumes.get(p.type_id)
     low_liquidity = vol is not None and units > vol * st.max_days_to_sell
     top_bid = calc.best_price(pb["buy"])
     # no asks at all is the extreme of a thin market: fall back to history p5

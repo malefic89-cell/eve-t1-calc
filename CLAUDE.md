@@ -75,6 +75,17 @@ separate problem — rewriting history needs a force-push, so ask first.
   `industryActivityProducts` uses `typeID`/`productTypeID` columns.
 - The categories list must be derived from loaded products, not a raw SDE
   join on blueprint typeID (that returns only "Blueprint").
+- **`ISK/h` is the line ceiling, `ISK/h real` the achievable rate.** The old
+  column divides per-job profit by job time only, so on an illiquid item it is
+  optimistic by orders of magnitude — the order scenarios take the patient price
+  without charging any waiting time (measured: 636M vs 495k ISK/h on an item
+  whose output needs 117 days to sell). `calc.market_limited_iph` takes
+  `min(units/job_hours, daily_volume/24)` and multiplies by profit per unit.
+  Do it as a **rate**, never `min()` of two ISK/h values: on a loss-making item
+  min() would rank the slower operation as worse, when producing slower loses
+  less per hour. Applied to all four scenarios — book depth limits a single job,
+  daily volume limits repeating it. Still optimistic: daily volume is the whole
+  market's turnover, competitors included, and there is no competition model.
 - Daily volume is per **calendar** day, not per traded day: `calc.avg_daily_volume`
   sums the 7-day window ending **yesterday UTC** and divides by 7, because ESI
   history omits days with no trades. Dividing by the entry count overstated

@@ -121,7 +121,8 @@ td.health.neg { background: rgba(248, 81, 73, .10); }
     <th data-k="p_order_sell">P: ord→inst<span class="help" data-tip="Прибыль за job: материалы закуплены своими buy-ордерами (дешевле, но ждать), продукт продан мгновенно. Учтены брокерская комиссия на закупку и налог с продаж.">?</span></th>
     <th data-k="p_order_order">P: ord→ord<span class="help" data-tip="Прибыль за job: и закупка, и продажа своими ордерами. Максимальная маржа, но требует времени и присмотра за ордерами. Учтены обе брокерские комиссии и налог.">?</span></th>
     <th data-k="margin">Margin %<span class="help" data-tip="Маржа выбранного в фильтре сценария: прибыль ÷ полные затраты × 100%.">?</span></th>
-    <th data-k="iph">ISK/h<span class="help" data-tip="Прибыль в час для выбранного сценария: прибыль за job ÷ время производства job (с учётом TE, навыков и бонуса структуры).">?</span></th>
+    <th data-k="iph">ISK/h<span class="help" data-tip="Прибыль в час для выбранного сценария: прибыль за job ÷ время производства job (с учётом TE, навыков и бонуса структуры). Это потолок линии: он не учитывает, сможешь ли ты столько продать — смотри соседнюю колонку ISK/h real.">?</span></th>
+    <th data-k="iph_real">ISK/h real<span class="help" data-tip="Прибыль в час на достижимом темпе, а не на производимом. У операции два потолка: линия выпускает выпуск_job ÷ часы_job штук в час, рынок впитывает дневной_объём ÷ 24. Берётся меньший из двух и умножается на прибыль с единицы. Если связывает линия — цифра совпадает с ISK/h; если рынок — падает, иногда в десятки раз. Прочерк — объём ещё не загрузился; ноль — за 7 дней не продано ни одной штуки. Оптимистично: дневной объём это весь оборот рынка, включая продажи конкурентов.">?</span></th>
     <th data-k="daily_volume">Daily vol<span class="help" data-tip="Средний объём торгов в регионе The Forge за последние 7 календарных дней (сумма ÷ 7). Дни без сделок считаются нулями, поэтому у неликвида здесь честный ноль, а не среднее по редким сделкам. Показывает, сколько штук в день реально удастся продать.">?</span></th>
   </tr></thead>
   <tbody id="tbody"></tbody>
@@ -216,6 +217,7 @@ function metric(r, key) {
     case "p_order_order": return sc.order_order.profit;
     case "margin": return sc[curScenario()].margin;
     case "iph": return sc[curScenario()].iph;
+    case "iph_real": return sc[curScenario()].iph_real;
     default: return r[key];
   }
 }
@@ -278,6 +280,7 @@ function render() {
         return `<td class="${cls(p)}${k === "buy_sell" ? " health" : ""}" title="${fmtIsk(p)}">${fmtC(p)}</td>`; }).join("")}
       <td class="${cls(s.margin)}">${s.margin == null ? "—" : s.margin.toFixed(1)}</td>
       <td class="${cls(s.iph)}" title="${fmtIsk(s.iph)}">${fmtC(s.iph)}</td>
+      <td class="${cls(s.iph_real)}" title="${fmtIsk(s.iph_real)}">${fmtC(s.iph_real)}</td>
       <td title="${fmt(r.daily_volume)}">${r.daily_volume == null ? "—" : fmtC(Math.round(r.daily_volume))}</td>
     </tr>`;
   }).join("");
@@ -501,13 +504,18 @@ async function openDetail(typeId) {
         <td><b>${fmtIsk(r.material_cost_instant)} / ${fmtIsk(r.material_cost_orders)}</b></td></tr>
     </tbody></table>
     <h3>Scenarios (per job)</h3>
-    <table><thead><tr><th class="left">Scenario</th><th>Profit</th><th>Margin %</th><th>ISK/h</th></tr></thead>
+    <table><thead><tr><th class="left">Scenario</th><th>Profit</th><th>Margin %</th><th>ISK/h</th>
+      <th>ISK/h real</th></tr></thead>
     <tbody>${Object.entries(scenNames).map(([k, n]) => `<tr>
       <td class="left">${n}</td>
       <td class="${cls(sc[k].profit)}">${fmtIsk(sc[k].profit)}</td>
       <td class="${cls(sc[k].margin)}">${sc[k].margin == null ? "—" : sc[k].margin.toFixed(1)}</td>
       <td class="${cls(sc[k].iph)}">${fmtIsk(sc[k].iph)}</td>
-    </tr>`).join("")}</tbody></table>`;
+      <td class="${cls(sc[k].iph_real)}">${fmtIsk(sc[k].iph_real)}</td>
+    </tr>`).join("")}</tbody></table>
+    <p class="dim">ISK/h — потолок линии. ISK/h real — на достижимом темпе:
+      линия ${r.daily_volume == null ? "?" : (r.qty_per_run * r.runs / (r.time_per_run_s * r.runs / 3600)).toFixed(2)} шт/ч
+      против рынка ${r.daily_volume == null ? "?" : (r.daily_volume / 24).toFixed(2)} шт/ч — связывает меньший.</p>`;
   document.getElementById("detailModal").classList.add("open");
 }
 

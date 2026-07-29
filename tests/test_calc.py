@@ -246,6 +246,55 @@ class TestJobMaterialCost:
         assert mc_o == pytest.approx(450.0)
 
 
+class TestMarketLimitedIph:
+    # 100 units in 10 h = 10 units/h from the line; profit 1000 -> 10 ISK/unit
+    LINE = dict(profit=1000.0, units=100, job_seconds=10 * 3600)
+
+    def test_line_binds_when_market_is_deeper(self):
+        # market absorbs 480/day = 20/h > 10/h from the line -> unchanged
+        r = calc.market_limited_iph(**self.LINE, daily_volume=480)
+        assert r == pytest.approx(100.0)                      # == profit / 10 h
+
+    def test_market_binds_when_shallower(self):
+        # 24/day = 1/h against 10/h producible: a tenth of the throughput
+        r = calc.market_limited_iph(**self.LINE, daily_volume=24)
+        assert r == pytest.approx(10.0)
+
+    def test_equal_rates(self):
+        r = calc.market_limited_iph(**self.LINE, daily_volume=240)
+        assert r == pytest.approx(100.0)
+
+    def test_zero_volume_is_zero_not_none(self):
+        # nothing traded in the window: real information, not missing data
+        assert calc.market_limited_iph(**self.LINE, daily_volume=0) == 0.0
+
+    def test_volume_not_fetched_yet(self):
+        assert calc.market_limited_iph(**self.LINE, daily_volume=None) is None
+
+    def test_none_profit_propagates(self):
+        assert calc.market_limited_iph(None, 100, 3600, 240) is None
+
+    def test_loss_making_item_loses_less_when_throttled(self):
+        # the point of rate x profit-per-unit over min() of two ISK/h: a slower
+        # operation must lose LESS per hour, not be reported as worse
+        fast = calc.market_limited_iph(-1000.0, 100, 10 * 3600, 480)
+        slow = calc.market_limited_iph(-1000.0, 100, 10 * 3600, 24)
+        assert fast == pytest.approx(-100.0)
+        assert slow == pytest.approx(-10.0)
+        assert slow > fast
+
+    def test_degenerate_inputs(self):
+        assert calc.market_limited_iph(1000.0, 0, 3600, 240) is None
+        assert calc.market_limited_iph(1000.0, 100, 0, 240) is None
+
+    def test_matches_hand_computed_live_case(self):
+        # Large Vorton Projector I, Runs=100: 100 units in 32.6 h, profit
+        # 30_520_838_281, volume 1.7/day -> market binds at 0.0708 units/h
+        r = calc.market_limited_iph(30_520_838_281.0, 100, 32.6 * 3600, 1.7)
+        assert r == pytest.approx(305_208_382.81 * (1.7 / 24), rel=1e-9)
+        assert r < 22_000_000        # against 935M from the line-only figure
+
+
 class TestScenario:
     def test_instant_both_sides(self):
         # cost 100 mats + 10 job; sell 1 unit at 200; tax 10%; no broker

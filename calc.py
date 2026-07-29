@@ -235,6 +235,37 @@ def job_material_cost(
     )
 
 
+# ---------- achievable rate ----------
+
+def market_limited_iph(
+    profit: float | None,
+    units: int,
+    job_seconds: float,
+    daily_volume: float | None,
+) -> float | None:
+    """Profit per hour at the rate actually achievable, not just producible.
+
+    Two ceilings bind the operation. The line turns out `units / job_hours` items
+    an hour; the market only absorbs `daily_volume / 24`. The achievable rate is
+    the lower of the two — production and selling pipeline (the next job runs
+    while the last batch sells), so the binding constraint wins instead of the
+    two waits adding up.
+
+    Deliberately a rate times profit-per-unit rather than min() of two ISK/h
+    figures: on a loss-making item min() would call the slower operation *worse*,
+    when producing slower in fact loses less per hour.
+
+    None when there is nothing to go on — no profit, no output, or the volume has
+    not been fetched yet. A volume of 0 is real information (nothing traded in the
+    window, so nothing can be sold) and gives 0.
+    """
+    if profit is None or daily_volume is None or units <= 0 or job_seconds <= 0:
+        return None
+    rate_line = units / (job_seconds / 3600)
+    rate_market = daily_volume / 24
+    return profit / units * min(rate_line, rate_market)
+
+
 # ---------- scenarios ----------
 
 @dataclass

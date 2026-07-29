@@ -4,9 +4,21 @@ The distinction that matters here: a 4xx means "this type never trades" and is
 worth remembering for the full TTL, while a network failure means we learned
 nothing and must not be cached as an empty history.
 """
+import threading
+
 import requests
 
 import esi
+
+
+def _order(type_id, price, buy=False, volume=7, location=None):
+    return {
+        "type_id": type_id,
+        "is_buy_order": buy,
+        "location_id": esi.JITA_44 if location is None else location,
+        "price": price,
+        "volume_remain": volume,
+    }
 
 
 class _Resp:
@@ -30,10 +42,12 @@ class _Session:
         self.queue = list(queue)
         self.headers = {}
         self.calls = 0
+        self._lock = threading.Lock()   # order pages are fetched concurrently
 
     def get(self, url, params=None, timeout=None):
-        self.calls += 1
-        item = self.queue.pop(0) if self.queue else _Resp(500)
+        with self._lock:
+            self.calls += 1
+            item = self.queue.pop(0) if self.queue else _Resp(500)
         if isinstance(item, Exception):
             raise item
         return item
@@ -114,6 +128,49 @@ def test_user_agent_carries_no_personal_data():
         if saved is not None:
             os.environ["EVE_CALC_CONTACT"] = saved
         importlib.reload(esi)
+
+
+class _PagedResp(_Resp):
+    def __init__(self, payload, pages=None):
+        super().__init__(200, payload)
+        if pages is not None:
+            self.headers["X-Pages"] = str(pages)
+
+
+def test_orders_fetched_in_parallel_across_all_pages(tmp_path, monkeypatch):
+    """Every page must land in the book exactly once, whatever order the
+    threads complete in, and progress must report each page."""
+    pages = 5
+    queue = [_PagedResp([_order(34, 10.0 + p)], pages=pages) for p in range(1, pages + 1)]
+    c = _client(tmp_path, queue, monkeypatch)
+    seen = []
+    book = c.jita_orders(progress_cb=lambda done, total: seen.append((done, total)))
+
+    assert c.session.calls == pages
+    prices = sorted(o[0] for o in book[34]["sell"])
+    assert prices == [11.0, 12.0, 13.0, 14.0, 15.0]
+    assert sorted(seen) == [(p, pages) for p in range(2, pages + 1)]
+
+
+def test_single_page_orders_need_no_workers(tmp_path, monkeypatch):
+    c = _client(tmp_path, [_PagedResp([_order(34, 5.0)], pages=1)], monkeypatch)
+    book = c.jita_orders()
+    assert c.session.calls == 1
+    assert book[34]["sell"] == [[5.0, 7]]
+
+
+def test_failed_page_aborts_the_fetch(tmp_path, monkeypatch):
+    """A partial book would price real materials as unpriceable and silently
+    change every margin, so one bad page must fail the whole fetch."""
+    queue = [_PagedResp([_order(34, 10.0)], pages=3), _Resp(404)]
+    c = _client(tmp_path, queue, monkeypatch)
+    try:
+        c.jita_orders()
+    except esi.ESIError:
+        pass
+    else:
+        raise AssertionError("a failed page must not yield a partial book")
+    assert not (tmp_path / f"orders_{esi.THE_FORGE}.json").exists()
 
 
 def test_esi_error_carries_4xx_status(tmp_path, monkeypatch):

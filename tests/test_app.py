@@ -17,7 +17,7 @@ import config
 def clean_state():
     """Snapshot and restore the bits of the global State these tests touch."""
     saved = (dict(app.S.hist_prices), dict(app.S.volumes),
-             app.S.history_done, app.S.settings)
+             app.S.history_done, app.S.settings, list(app.S.rows), app.S.status)
     app.S.hist_prices.clear()
     app.S.volumes.clear()
     app.S.history_done = 0
@@ -28,6 +28,8 @@ def clean_state():
     app.S.volumes.update(saved[1])
     app.S.history_done = saved[2]
     app.S.settings = saved[3]
+    app.S.rows = saved[4]
+    app.S.status = saved[5]
 
 
 TODAY = date(2026, 7, 29)
@@ -106,3 +108,52 @@ class TestPutSettingsMerge:
             app.put_settings({"accounting": 9})
         assert ei.value.status_code == 400
         assert clean_state.settings.accounting == 5
+
+
+class TestItemsStayServedDuringRefresh:
+    def test_rows_served_while_refreshing(self, clean_state):
+        clean_state.rows = [{"type_id": 34, "name": "Tritanium"}]
+        clean_state.status = "fetching_orders"
+        out = app.items()
+        assert out["rows"] == clean_state.rows
+        assert out["stale"] is True
+
+    def test_not_stale_when_ready(self, clean_state):
+        clean_state.rows = [{"type_id": 34}]
+        clean_state.status = "ready"
+        assert app.items()["stale"] is False
+
+    def test_cold_start_still_503s(self, clean_state):
+        clean_state.rows = []
+        clean_state.status = "loading"
+        with pytest.raises(HTTPException) as ei:
+            app.items()
+        assert ei.value.status_code == 503
+
+
+class TestBlueprintOverrideRollback:
+    @pytest.fixture(autouse=True)
+    def _isolate_settings_file(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(config, "DATA_DIR", tmp_path)
+        monkeypatch.setattr(config, "SETTINGS_FILE", tmp_path / "settings.json")
+
+    def test_rejected_edit_keeps_the_previous_override(self, clean_state):
+        clean_state.settings = config.Settings(
+            blueprint_overrides={"1234": {"me": 7, "te": 14}})
+        with pytest.raises(HTTPException) as ei:
+            app.set_blueprint_override(1234, {"me": 99})   # ME must be 0-10
+        assert ei.value.status_code == 400
+        assert clean_state.settings.blueprint_overrides == {"1234": {"me": 7, "te": 14}}
+
+    def test_rejected_new_override_leaves_none_behind(self, clean_state):
+        clean_state.settings = config.Settings(blueprint_overrides={})
+        with pytest.raises(HTTPException):
+            app.set_blueprint_override(1234, {"te": 99})
+        assert clean_state.settings.blueprint_overrides == {}
+
+    def test_valid_edit_replaces_and_clear_removes(self, clean_state):
+        clean_state.settings = config.Settings(blueprint_overrides={"1234": {"me": 7}})
+        assert app.set_blueprint_override(1234, {"me": 4})["override"] == {"me": 4}
+        out = app.set_blueprint_override(1234, {"me": None, "te": None, "runs": None})
+        assert out["override"] is None
+        assert clean_state.settings.blueprint_overrides == {}

@@ -7,6 +7,7 @@ invention/reactions can be added later by extending ACTIVITY constants.
 from __future__ import annotations
 
 import sqlite3
+import threading
 import zlib
 import urllib.request
 from dataclasses import dataclass
@@ -85,16 +86,30 @@ class Product:
 
 
 class SDE:
+    """Read-only SDE access.
+
+    One connection is shared by the bootstrap thread and FastAPI's request
+    threadpool (`/api/systems`), so every query is serialized by `_lock` —
+    check_same_thread=False only silences the thread check, it does not stop
+    two threads from interleaving on the same cursor.
+    """
+
     def __init__(self, path: Path = SDE_PATH):
         self.conn = sqlite3.connect(str(path), check_same_thread=False)
         self.conn.row_factory = sqlite3.Row
+        self._lock = threading.Lock()
 
     def close(self) -> None:
-        self.conn.close()
+        with self._lock:
+            self.conn.close()
+
+    def _query(self, sql: str, params: tuple = ()) -> list[sqlite3.Row]:
+        with self._lock:
+            return self.conn.execute(sql, params).fetchall()
 
     def manufacturable_t1_products(self) -> list[Product]:
         """All published T1 products of manufacturing blueprints."""
-        rows = self.conn.execute(
+        rows = self._query(
             """
             SELECT p.productTypeID AS product_id,
                    t.typeName      AS product_name,
@@ -118,7 +133,7 @@ class SDE:
             """
             % ",".join("?" * len(T1_META_GROUPS)),
             (ACTIVITY_MANUFACTURING, ACTIVITY_MANUFACTURING, *T1_META_GROUPS),
-        ).fetchall()
+        )
         return [
             Product(
                 type_id=r["product_id"],
@@ -134,7 +149,7 @@ class SDE:
         ]
 
     def materials_for_blueprint(self, blueprint_type_id: int) -> list[Material]:
-        rows = self.conn.execute(
+        rows = self._query(
             """
             SELECT m.materialTypeID, t.typeName, m.quantity
             FROM industryActivityMaterials m
@@ -143,14 +158,14 @@ class SDE:
             ORDER BY m.quantity DESC
             """,
             (blueprint_type_id, ACTIVITY_MANUFACTURING),
-        ).fetchall()
+        )
         return [
             Material(type_id=r["materialTypeID"], name=r["typeName"], base_qty=r["quantity"])
             for r in rows
         ]
 
     def search_systems(self, query: str, limit: int = 20) -> list[dict]:
-        rows = self.conn.execute(
+        rows = self._query(
             """
             SELECT solarSystemID, solarSystemName, security
             FROM mapSolarSystems
@@ -159,7 +174,7 @@ class SDE:
             LIMIT ?
             """,
             (f"%{query}%", limit),
-        ).fetchall()
+        )
         return [
             {
                 "system_id": r["solarSystemID"],
@@ -170,7 +185,5 @@ class SDE:
         ]
 
     def type_name(self, type_id: int) -> str | None:
-        r = self.conn.execute(
-            "SELECT typeName FROM invTypes WHERE typeID = ?", (type_id,)
-        ).fetchone()
-        return r["typeName"] if r else None
+        rows = self._query("SELECT typeName FROM invTypes WHERE typeID = ?", (type_id,))
+        return rows[0]["typeName"] if rows else None

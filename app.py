@@ -23,7 +23,16 @@ from esi import ESIClient
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 log = logging.getLogger("app")
 
-app = FastAPI(title="EVE T1 Manufacturing Profit Calculator")
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    # Bootstrap runs in a daemon thread so the server answers /api/status
+    # (and serves the page) while the SDE and order book are still loading.
+    threading.Thread(target=lambda: (bootstrap(), _after_bootstrap()), daemon=True).start()
+    yield
+
+
+app = FastAPI(title="EVE T1 Manufacturing Profit Calculator", lifespan=lifespan)
 
 STATIC_DIR = Path(__file__).parent / "static"
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
@@ -182,6 +191,10 @@ def compute_row(p: sde_mod.Product) -> dict:
         p.base_time, te, st.industry, st.advanced_industry, st.structure_time_bonus
     )
 
+    # A material with no adjusted price contributes 0 to EIV, understating the
+    # job cost. Deliberate: CCP publishes adjusted prices for everything that
+    # actually trades, and the gap only hits 14 of ~1845 products (Project
+    # Discovery rewards, structure-only components), all already unbuildable.
     eiv = calc.estimated_item_value(
         [(m.base_qty, S.adjusted.get(m.type_id, 0.0)) for m in mats], runs
     )
@@ -229,10 +242,13 @@ def compute_row(p: sde_mod.Product) -> dict:
     top_bid = calc.best_price(pb["buy"])
     # no asks at all is the extreme of a thin market: fall back to history p5
     eff_ask = top_ask if top_ask is not None else hist_p5
-    wide_spread = (
+    # No bid at all is an unbounded spread, so it counts as wide outright.
+    # (Substituting 1 ISK for the missing bid used to let sub-3-ISK items pass
+    # and understated the ratio whenever the real bid was below 1 ISK.)
+    wide_spread = bool(
         vol is not None and vol < 100
         and eff_ask is not None
-        and eff_ask / max(top_bid or 0.0, 1.0) > 3
+        and (not top_bid or eff_ask / top_bid > 3)
     )
 
     return {
@@ -333,11 +349,6 @@ def fetch_history_background():
 
 # ---------------- API ----------------
 
-@app.on_event("startup")
-def on_startup():
-    threading.Thread(target=lambda: (bootstrap(), _after_bootstrap()), daemon=True).start()
-
-
 def _after_bootstrap():
     if S.status == "ready":
         vols, prices = _load_cached_history()
@@ -403,10 +414,13 @@ def put_settings(payload: dict):
 
 @app.get("/api/items")
 def items():
-    if S.status != "ready":
-        raise HTTPException(503, f"not ready: {S.status}")
+    # Keep serving the last computed rows while a price refresh is in flight:
+    # that takes minutes, and blanking the table for all of it is worse than
+    # showing numbers a few minutes old — the header states the order age.
     with S.lock:
-        return {"rows": S.rows}
+        if not S.rows:
+            raise HTTPException(503, f"not ready: {S.status}")
+        return {"rows": S.rows, "stale": S.status != "ready"}
 
 
 @app.get("/api/categories")
@@ -432,8 +446,8 @@ def systems(q: str = ""):
 
 @app.get("/api/item/{type_id}")
 def item_detail(type_id: int):
-    if S.status != "ready":
-        raise HTTPException(503, "not ready")
+    if not S.rows:  # as with /api/items, stale detail beats a dead modal
+        raise HTTPException(503, f"not ready: {S.status}")
     p = next((x for x in S.products if x.type_id == type_id), None)
     if p is None:
         raise HTTPException(404, "unknown product")
@@ -465,19 +479,26 @@ def item_detail(type_id: int):
 def set_blueprint_override(blueprint_type_id: int, payload: dict):
     """Set a per-blueprint ME/TE/runs override; all-null payload clears it."""
     st = S.settings
+    key = str(blueprint_type_id)
+    prev = st.blueprint_overrides.get(key)
     entry = {k: payload[k] for k in ("me", "te", "runs") if payload.get(k) is not None}
     if entry:
-        st.blueprint_overrides[str(blueprint_type_id)] = entry
+        st.blueprint_overrides[key] = entry
     else:
-        st.blueprint_overrides.pop(str(blueprint_type_id), None)
+        st.blueprint_overrides.pop(key, None)
     try:
         config.save_settings(st)
     except ValueError as e:
-        st.blueprint_overrides.pop(str(blueprint_type_id), None)
+        # restore what was there — a rejected edit must not delete a working
+        # override, which dropping the key outright used to do
+        if prev is None:
+            st.blueprint_overrides.pop(key, None)
+        else:
+            st.blueprint_overrides[key] = prev
         raise HTTPException(400, str(e))
     if S.status == "ready":
         recompute()
-    return {"override": st.blueprint_overrides.get(str(blueprint_type_id))}
+    return {"override": st.blueprint_overrides.get(key)}
 
 
 @app.post("/api/refresh")

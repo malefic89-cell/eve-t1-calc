@@ -146,10 +146,25 @@ class ESIClient:
         first = self._get(path, {"order_type": "all", "page": 1})
         pages = int(first.headers.get("X-Pages", 1))
         all_orders = first.json()
-        for page in range(2, pages + 1):
-            all_orders.extend(self._get(path, {"order_type": "all", "page": page}).json())
-            if progress_cb:
-                progress_cb(page, pages)
+
+        # ~400 pages sequentially dominated startup; page order doesn't matter
+        # because the book is sorted below. A failing page still aborts the whole
+        # fetch: a silently partial book would price real materials as
+        # unpriceable and quietly change every margin.
+        if pages > 1:
+            def fetch(page: int) -> list:
+                return self._get(path, {"order_type": "all", "page": page}).json()
+
+            with concurrent.futures.ThreadPoolExecutor(
+                max_workers=ORDER_PAGE_WORKERS
+            ) as ex:
+                futures = [ex.submit(fetch, p) for p in range(2, pages + 1)]
+                done = 1
+                for fut in concurrent.futures.as_completed(futures):
+                    all_orders.extend(fut.result())   # results consumed in this
+                    done += 1                          # thread only — no locking
+                    if progress_cb:
+                        progress_cb(done, pages)
 
         # Region-wide sell presence: BPOs are seeded at NPC stations all over
         # The Forge, not just Jita 4-4, so this set (not the 4-4 book) is what

@@ -384,7 +384,13 @@ def _after_bootstrap():
 
 @app.get("/")
 def index():
-    return FileResponse(str(STATIC_DIR / "index.html"))
+    # The whole frontend is this one file, edited constantly during development.
+    # Without Cache-Control a browser may serve it from memory without asking,
+    # so a plain refresh silently shows stale JS. "no-cache" forces revalidation
+    # on every load; at 43 KB over loopback the re-fetch costs nothing.
+    return FileResponse(
+        str(STATIC_DIR / "index.html"), headers={"Cache-Control": "no-cache"}
+    )
 
 
 @app.get("/api/status")

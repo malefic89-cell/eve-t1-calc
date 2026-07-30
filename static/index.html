@@ -95,14 +95,17 @@ tbody tr:hover { background: #161b22; cursor: pointer; }
   <label class="dim">Runs<span class="help" data-tip="Число прогонов одного job для всех чертежей без индивидуальной настройки. Влияет на округление материалов (экономия ME накапливается), глубину закупки/продажи в стакане, job cost и время. У BPO прогоны не кончаются, но один job в игре ограничен 30 сутками суммарного времени: строки, где выбранное число прогонов не влезает в лимит, помечаются бейджем &gt;30d.">?</span></label>
   <input id="fRuns" type="number" min="1" value="1" style="width:65px">
   <label class="dim">Scenario<span class="help" data-tip="Сценарий торговли, по которому считаются колонки Profit, Margin % и ISK/h. Inst — мгновенно по текущим ордерам, Order — своим ордером (дешевле купить / дороже продать, но дольше и с брокерской комиссией). Формат: покупка материалов → продажа продукта. Колонка прибыли показывает выбранный здесь сценарий; какой сценарий выгоднее для конкретного предмета, подсказывает колонка Best. Чтобы увидеть все четыре сразу, включи галочку All scenarios справа.">?</span></label>
-  <select id="fScenario">
+  <!-- autocomplete=off on the controls that change the table's shape: without it
+       a browser restores whatever was picked before the reload and silently
+       overrides these defaults, which reads as the page ignoring them. -->
+  <select id="fScenario" autocomplete="off">
     <option value="buy_sell">Inst → Inst</option>
     <option value="buy_order" selected>Inst → Order</option>
     <option value="order_sell">Order → Inst</option>
     <option value="order_order">Order → Order</option>
   </select>
-  <label class="dim"><input type="checkbox" id="fAllScen" style="vertical-align:middle"> All scenarios<span class="help" data-tip="По умолчанию колонка прибыли одна и показывает выбранный слева сценарий, а рядом стоит Best — какой способ торговли на этом предмете выгоднее всего. Число колонок не зависит от выбранного сценария, поэтому таблица не съезжает при переключении. Включи галочку, чтобы развернуть все четыре колонки прибыли и сравнить сценарии числами. Сортировка при переключении сценария переезжает на новую колонку сама.">?</span></label>
-  <label class="dim"><input type="checkbox" id="fBpc" style="vertical-align:middle"> BPC/susp<span class="help" data-tip="Показать скрытые по умолчанию строки: чертёж не купить на рынке (нет маркет-группы в SDE или нет живых sell-ордеров на BPO в The Forge — ивентовые корабли SoCT/EDENCOM, бустеры, акселераторы), подозрительные данные SDE (пустой рецепт или себестоимость < 1% цены продажи), широкий спред на неликвиде (ask/bid > 3 при < 100 шт/день), некупибельные материалы. Их маржа обманчива.">?</span></label>
+  <label class="dim"><input type="checkbox" id="fAllScen" autocomplete="off" style="vertical-align:middle"> All scenarios<span class="help" data-tip="По умолчанию колонка прибыли одна и показывает выбранный слева сценарий, а рядом стоит Best — какой способ торговли на этом предмете выгоднее всего. Число колонок не зависит от выбранного сценария, поэтому таблица не съезжает при переключении. Включи галочку, чтобы развернуть все четыре колонки прибыли и сравнить сценарии числами. Сортировка при переключении сценария переезжает на новую колонку сама.">?</span></label>
+  <label class="dim"><input type="checkbox" id="fBpc" autocomplete="off" style="vertical-align:middle"> BPC/susp<span class="help" data-tip="Показать скрытые по умолчанию строки: чертёж не купить на рынке (нет маркет-группы в SDE или нет живых sell-ордеров на BPO в The Forge — ивентовые корабли SoCT/EDENCOM, бустеры, акселераторы), подозрительные данные SDE (пустой рецепт или себестоимость < 1% цены продажи), широкий спред на неликвиде (ask/bid > 3 при < 100 шт/день), некупибельные материалы. Их маржа обманчива.">?</span></label>
   <span class="dim" id="rowCount"></span>
 </div>
 
@@ -384,6 +387,12 @@ async function loadItems() {
   updateGroups();
   render();
 }
+
+// Belt and braces alongside autocomplete=off: assert the declared defaults before
+// the first render, for browsers that restore form state regardless.
+document.getElementById("fScenario").value = "buy_order";   // Inst → Order
+document.getElementById("fAllScen").checked = false;
+document.getElementById("fBpc").checked = false;
 
 async function initRuns() {
   try {

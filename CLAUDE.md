@@ -185,3 +185,18 @@ separate problem — rewriting history needs a force-push, so ask first.
   memory); static/index.html needs no restart, just a browser refresh.
 - PowerShell here-strings: keep double quotes out of `git commit -m @'...'@`
   bodies — PS 5.1 mangles them when passing to git.
+- **This console is cp1251.** Python printing any character outside it — `→`,
+  `×`, `—`, box drawing — dies with
+  `UnicodeEncodeError: 'charmap' codec can't encode character '→'`, and the
+  traceback replaces the output you wanted. Export `PYTHONIOENCODING=utf-8`
+  before every Python one-liner that prints scenario labels, tooltip text or
+  anything from `index.html`. Cheapest to just always set it.
+- **Writing files from Python: `encoding="utf-8", newline=""`.** Text mode
+  translates `\n` to `\r\n` on this platform, which silently corrupts anything
+  byte-sensitive — a generated patch gets CRLF line endings and `git apply`
+  then reports "patch does not apply" with context that looks identical.
+- Splitting one file's changes across commits (two features edited in the same
+  region) is easier by temporarily reverting the later feature's lines on disk,
+  committing, then restoring from a backup copy, than by hand-editing hunks out
+  of a patch. Adjacent lines merge into one hunk at any `-U` setting, so
+  `git apply --cached` with selected hunks cannot separate them.

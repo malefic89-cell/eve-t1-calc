@@ -43,12 +43,9 @@ tbody tr:hover { background: #161b22; cursor: pointer; }
   font-weight: 600; margin-left: 6px; vertical-align: middle;
   background: #21262d; border: 1px solid var(--border); color: var(--dim); }
 .badge.warn { color: #d29922; border-color: #d29922; }
-/* Liquidity health tint: is the item profitable even dumped instantly? Always
-   keyed on the inst→inst scenario, so it stays meaningful on the single profit
-   column whatever scenario that column shows — hence its own classes rather than
-   reusing .pos/.neg, which colour the text of the displayed scenario. */
-td.hpos { background: rgba(63, 185, 80, .10); }
-td.hneg { background: rgba(248, 81, 73, .10); }
+/* The inst→inst health signal was once a cell tint. It fired on 83% of visible
+   rows and gave "needs patience" and "loss either way" the same colour, so it is
+   gone; switch the scenario to inst→inst to read that number directly. */
 #tablewrap { flex: 1 1 auto; overflow: auto; }
 #pager { display: none; gap: 10px; padding: 8px 16px; align-items: center;
   background: var(--panel); border-top: 1px solid var(--border); flex-shrink: 0; }
@@ -97,14 +94,14 @@ td.hneg { background: rgba(248, 81, 73, .10); }
   <input id="fVolume" type="number" value="" style="width:65px" placeholder="any">
   <label class="dim">Runs<span class="help" data-tip="Число прогонов одного job для всех чертежей без индивидуальной настройки. Влияет на округление материалов (экономия ME накапливается), глубину закупки/продажи в стакане, job cost и время. У BPO прогоны не кончаются, но один job в игре ограничен 30 сутками суммарного времени: строки, где выбранное число прогонов не влезает в лимит, помечаются бейджем &gt;30d.">?</span></label>
   <input id="fRuns" type="number" min="1" value="1" style="width:65px">
-  <label class="dim">Scenario<span class="help" data-tip="Сценарий торговли, по которому считаются колонки Profit, Margin % и ISK/h. Inst — мгновенно по текущим ордерам, Order — своим ордером (дешевле купить / дороже продать, но дольше и с брокерской комиссией). Формат: покупка материалов → продажа продукта. Колонка прибыли одна и показывает выбранный здесь сценарий; чтобы увидеть все четыре сразу, включи галочку All scenarios справа.">?</span></label>
+  <label class="dim">Scenario<span class="help" data-tip="Сценарий торговли, по которому считаются колонки Profit, Margin % и ISK/h. Inst — мгновенно по текущим ордерам, Order — своим ордером (дешевле купить / дороже продать, но дольше и с брокерской комиссией). Формат: покупка материалов → продажа продукта. Колонка прибыли показывает выбранный здесь сценарий; какой сценарий выгоднее для конкретного предмета, подсказывает колонка Best. Чтобы увидеть все четыре сразу, включи галочку All scenarios справа.">?</span></label>
   <select id="fScenario">
     <option value="buy_sell">Inst → Inst</option>
     <option value="buy_order" selected>Inst → Order</option>
     <option value="order_sell">Order → Inst</option>
     <option value="order_order">Order → Order</option>
   </select>
-  <label class="dim"><input type="checkbox" id="fAllScen" style="vertical-align:middle"> All scenarios<span class="help" data-tip="По умолчанию колонка прибыли одна и показывает выбранный слева сценарий. Включи, чтобы вернуть все четыре колонки сразу и сравнить сценарии между собой. Подсветка ячейки — индикатор рынка, она всегда считается по сценарию inst→inst, независимо от того, какой выбран: зелёный фон значит, что предмет прибылен даже при мгновенном сливе в buy-ордера, красный — что «прибыльный» ордерный сценарий держится только на терпеливой цене. Сортировка при переключении сценария переезжает на новую колонку сама.">?</span></label>
+  <label class="dim"><input type="checkbox" id="fAllScen" style="vertical-align:middle"> All scenarios<span class="help" data-tip="По умолчанию колонка прибыли одна и показывает выбранный слева сценарий, а рядом стоит Best — какой способ торговли на этом предмете выгоднее всего. Число колонок не зависит от выбранного сценария, поэтому таблица не съезжает при переключении. Включи галочку, чтобы развернуть все четыре колонки прибыли и сравнить сценарии числами. Сортировка при переключении сценария переезжает на новую колонку сама.">?</span></label>
   <label class="dim"><input type="checkbox" id="fBpc" style="vertical-align:middle"> BPC/susp<span class="help" data-tip="Показать скрытые по умолчанию строки: чертёж не купить на рынке (нет маркет-группы в SDE или нет живых sell-ордеров на BPO в The Forge — ивентовые корабли SoCT/EDENCOM, бустеры, акселераторы), подозрительные данные SDE (пустой рецепт или себестоимость < 1% цены продажи), широкий спред на неликвиде (ask/bid > 3 при < 100 шт/день), некупибельные материалы. Их маржа обманчива.">?</span></label>
   <span class="dim" id="rowCount"></span>
 </div>
@@ -120,10 +117,11 @@ td.hneg { background: rgba(248, 81, 73, .10); }
     <th data-k="cost">Cost/job<span class="help" data-tip="Стоимость материалов на весь job при мгновенной покупке с sell-ордеров Jita 4-4. Цена взвешена по глубине стакана — для больших партий она выше лучшего ордера.">?</span></th>
     <th data-k="job_cost">Job cost<span class="help" data-tip="Стоимость установки работы: EIV × индекс системы × (1 − бонус структуры) + налог структуры + 4% сбор SCC. EIV — сумма базовых материалов по adjusted-ценам CCP.">?</span></th>
     <th data-k="sell_via_sell_order">Sell price<span class="help" data-tip="Реалистичная цена за единицу при продаже своим sell-ордером: минимум из лучшего ask в Jita 4-4 и 5-го перцентиля средних дневных цен за 30 дней истории. На неликвиде верхний ask — фантазия продавца, а не достижимая цена.">?</span></th>
-    <th class="scen" data-k="p_buy_sell">P: inst→inst<span class="help" data-tip="Прибыль за job: материалы куплены мгновенно с sell-ордеров, продукт продан мгновенно в buy-ордера. Самый быстрый, но наименее выгодный сценарий. Учтён налог с продаж. Подсветка ячейки — индикатор здоровья рынка: если даже мгновенный слив в плюсе или лёгком минусе, спред реален; глубокий минус при «прибыльном» ордерном сценарии — признак неликвида.">?</span></th>
+    <th class="scen" data-k="p_buy_sell">P: inst→inst<span class="help" data-tip="Прибыль за job: материалы куплены мгновенно с sell-ордеров, продукт продан мгновенно в buy-ордера. Учтён налог с продаж, брокерской комиссии нет — своих ордеров тут не выставляется. Это единственный сценарий без ожидания, поэтому он же и проверка реальности: плюс здесь значит, что спред подтверждён живыми ордерами с обеих сторон и деньги можно взять сразу. Если в этом сценарии убыток, а в ордерном прибыль — вся прибыль держится на том, дождёшься ли ты покупателя на свой ордер.">?</span></th>
     <th class="scen" data-k="p_buy_order">P: inst→order<span class="help" data-tip="Прибыль за job: материалы куплены мгновенно, продукт выставлен своим sell-ордером. Учтены налог с продаж и брокерская комиссия на продажу.">?</span></th>
     <th class="scen" data-k="p_order_sell">P: ord→inst<span class="help" data-tip="Прибыль за job: материалы закуплены своими buy-ордерами (дешевле, но ждать), продукт продан мгновенно. Учтены брокерская комиссия на закупку и налог с продаж.">?</span></th>
     <th class="scen" data-k="p_order_order">P: ord→ord<span class="help" data-tip="Прибыль за job: и закупка, и продажа своими ордерами. Максимальная маржа, но требует времени и присмотра за ордерами. Учтены обе брокерские комиссии и налог.">?</span></th>
+    <th data-k="best">Best<span class="help" data-tip="Какой способ торговли даёт больше всего прибыли именно на этом предмете. Все четыре сценария описывают один и тот же job, поэтому у них одинаковая длительность — сортировка по прибыли совпадает с сортировкой по ISK/h и по ISK/h real, и выбирать метрику не нужно. Наведи на ячейку, чтобы увидеть прибыль по всем четырём сразу. Цвет по знаку победителя: красная рекомендация значит «наименее убыточный из четырёх», а не совет это производить. Прочерк — ни один сценарий посчитать не удалось. Клик по заголовку группирует таблицу по рекомендованному способу.">?</span></th>
     <th data-k="margin">Margin %<span class="help" data-tip="Маржа выбранного в фильтре сценария: прибыль ÷ полные затраты × 100%.">?</span></th>
     <th data-k="iph">ISK/h<span class="help" data-tip="Прибыль в час для выбранного сценария: прибыль за job ÷ время производства job (с учётом TE, навыков и бонуса структуры). Это потолок линии: он не учитывает, сможешь ли ты столько продать — смотри соседнюю колонку ISK/h real.">?</span></th>
     <th data-k="iph_real">ISK/h real<span class="help" data-tip="Прибыль в час на достижимом темпе, а не на производимом. У операции два потолка: линия выпускает выпуск_job ÷ часы_job штук в час, рынок впитывает дневной_объём ÷ 24. Берётся меньший из двух и умножается на прибыль с единицы. Если связывает линия — цифра совпадает с ISK/h; если рынок — падает, иногда в десятки раз. Прочерк — объём ещё не загрузился; ноль — за 7 дней не продано ни одной штуки. Оптимистично: дневной объём это весь оборот рынка, включая продажи конкурентов.">?</span></th>
@@ -227,6 +225,7 @@ function metric(r, key) {
     case "p_buy_order": return sc.buy_order.profit;
     case "p_order_sell": return sc.order_sell.profit;
     case "p_order_order": return sc.order_order.profit;
+    case "best": { const b = bestScen(r); return b ? SCEN_LABEL[b] : ""; }
     case "margin": return sc[curScenario()].margin;
     case "iph": return sc[curScenario()].iph;
     case "iph_real": return sc[curScenario()].iph_real;
@@ -234,6 +233,24 @@ function metric(r, key) {
   }
 }
 const curScenario = () => document.getElementById("fScenario").value;
+const SCEN_LABEL = {
+  buy_sell: "inst→inst", buy_order: "inst→order",
+  order_sell: "ord→inst", order_order: "ord→ord",
+};
+
+// Which trade method nets most for this row. All four scenarios describe the same
+// job, so they share its duration — ranking by profit therefore ranks by ISK/h
+// and by ISK/h real too, and there is no metric to choose between.
+function bestScen(r) {
+  let best = null;
+  for (const k of SCEN_KEYS) {
+    const p = r.scenarios[k].profit;
+    if (p == null) continue;
+    if (best === null || p > r.scenarios[best].profit) best = k;
+  }
+  return best;
+}
+
 const badges = r =>
   (r.bpc_only ? `<span class="badge" title="Чертёж не продаётся на рынке (BPC-only, ивентовый дроп)">BPC</span>` : "") +
   (r.suspicious ? `<span class="badge warn" title="Подозрительные данные SDE: пустой рецепт или себестоимость < 1% цены продажи">⚠ data</span>` : "") +
@@ -255,6 +272,8 @@ function render() {
   // One profit column for the chosen scenario, or all four side by side. The
   // headers stay in the markup (tooltips with them) and are just hidden, so the
   // generated cells must line up with whichever are visible.
+  // Exactly one profit column whichever scenario is picked, so the layout never
+  // shifts on switching; the Best column beside it is always there.
   const showAll = document.getElementById("fAllScen").checked;
   const shownScen = showAll ? SCEN_KEYS : [scen];
   document.querySelectorAll("th.scen").forEach(th => {
@@ -262,7 +281,7 @@ function render() {
   });
   // A sort on a now-hidden scenario column would look like no sort at all, so
   // follow the switch and keep sorting by profit — of the scenario now shown.
-  if (!showAll && SCEN_KEYS.includes(sortKey.slice(2)) && sortKey !== "p_" + scen) {
+  if (SCEN_KEYS.includes(sortKey.slice(2)) && !shownScen.includes(sortKey.slice(2))) {
     sortKey = "p_" + scen;
   }
   let rows = ROWS.filter(r => {
@@ -295,9 +314,6 @@ function render() {
 
   document.getElementById("tbody").innerHTML = rows.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE).map(r => {
     const s = r.scenarios[scen];
-    // health tint always reads inst→inst, whatever scenario the cell shows
-    const hp = r.scenarios.buy_sell.profit;
-    const tint = hp == null ? "" : hp >= 0 ? " hpos" : " hneg";
     return `<tr onclick="openDetail(${r.type_id})">
       <td class="left name" title="${r.name}">${r.name}${badges(r)}</td>
       <td class="left dim grp" title="${r.category} / ${r.group}">${r.group}</td>
@@ -306,9 +322,13 @@ function render() {
       <td title="${fmtIsk(r.job_cost)}">${fmtC(r.job_cost)}</td>
       <td title="${fmtIsk(r.sell_via_sell_order)}">${fmtC(r.sell_via_sell_order)}</td>
       ${shownScen.map(k => { const p = r.scenarios[k].profit;
-        // expanded: only inst→inst carries the tint, as the column it describes
-        const t = (showAll && k !== "buy_sell") ? "" : tint;
-        return `<td class="${cls(p)}${t}" title="${fmtIsk(p)}">${fmtC(p)}</td>`; }).join("")}
+        return `<td class="${cls(p)}" title="${fmtIsk(p)}">${fmtC(p)}</td>`; }).join("")}
+      ${(() => { const b = bestScen(r);
+        // colour by the winner's sign: a red recommendation is the least bad of
+        // four losses, not advice to build the thing
+        const all = SCEN_KEYS.map(k => `${SCEN_LABEL[k]}: ${fmtIsk(r.scenarios[k].profit)}`).join("\n");
+        return `<td class="${b === null ? "dim" : cls(r.scenarios[b].profit)}" title="${all}">${b === null ? "—" : SCEN_LABEL[b]}</td>`;
+      })()}
       <td class="${cls(s.margin)}">${s.margin == null ? "—" : s.margin.toFixed(1)}</td>
       <td class="${cls(s.iph)}" title="${fmtIsk(s.iph)}">${fmtC(s.iph)}</td>
       <td class="${cls(s.iph_real)}" title="${fmtIsk(s.iph_real)}">${fmtC(s.iph_real)}</td>

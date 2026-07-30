@@ -22,6 +22,21 @@ ACTIVITY_MANUFACTURING = 1
 # metaGroupID 1 = Tech I; items missing from invMetaTypes are also T1
 T1_META_GROUPS = (1,)
 
+# Rigs are lifted out of the "Module" category into one category per size: that
+# category held 812 T1 products across 150 groups, 326 of them rigs, which made
+# the group filter unusable. Size comes from the rigSize attribute, ordered
+# smallest first — the category filter lists them in this order, not alphabetically.
+RIG_SIZE_ATTRIBUTE = 1547
+RIG_SIZE_NAMES = {1: "Small", 2: "Medium", 3: "Large", 4: "Capital"}
+RIG_CATEGORY = "Module"          # the category rigs are pulled out of
+RIG_GROUP_PREFIX = "Rig "        # "Rig Armor", "Rig Shield", ...
+
+
+def rig_category(size: int | None) -> str | None:
+    """Category name for a rig of this rigSize, or None if the size is unknown."""
+    name = RIG_SIZE_NAMES.get(size)
+    return f"Rigs ({name})" if name else None
+
 
 def sde_exists() -> bool:
     return SDE_PATH.exists() and SDE_PATH.stat().st_size > 0
@@ -118,7 +133,8 @@ class SDE:
                    a.time          AS base_time,
                    g.groupName,
                    c.categoryName,
-                   (bp.published = 1 AND bp.marketGroupID IS NOT NULL) AS bpo_market
+                   (bp.published = 1 AND bp.marketGroupID IS NOT NULL) AS bpo_market,
+                   COALESCE(ra.valueInt, ra.valueFloat) AS rig_size
             FROM industryActivityProducts p
             JOIN invTypes t  ON t.typeID = p.productTypeID
             JOIN invTypes bp ON bp.typeID = p.typeID
@@ -127,12 +143,22 @@ class SDE:
             JOIN industryActivity a
                  ON a.typeID = p.typeID AND a.activityID = ?
             LEFT JOIN invMetaTypes m ON m.typeID = p.productTypeID
+            -- (typeID, attributeID) is the primary key, so this cannot multiply rows
+            LEFT JOIN dgmTypeAttributes ra
+                 ON ra.typeID = p.productTypeID AND ra.attributeID = ?
             WHERE p.activityID = ?
               AND t.published = 1
               AND (m.metaGroupID IS NULL OR m.metaGroupID IN (%s))
             """
             % ",".join("?" * len(T1_META_GROUPS)),
-            (ACTIVITY_MANUFACTURING, ACTIVITY_MANUFACTURING, *T1_META_GROUPS),
+            # binding order follows the ?s in the text: activity, rig attribute,
+            # activity again, then the meta groups
+            (
+                ACTIVITY_MANUFACTURING,
+                RIG_SIZE_ATTRIBUTE,
+                ACTIVITY_MANUFACTURING,
+                *T1_META_GROUPS,
+            ),
         )
         return [
             Product(
@@ -142,11 +168,27 @@ class SDE:
                 quantity_per_run=r["quantity"],
                 base_time=r["base_time"],
                 group_name=r["groupName"],
-                category_name=r["categoryName"],
+                category_name=self._category_of(r),
                 bpo_on_market=bool(r["bpo_market"]),
             )
             for r in rows
         ]
+
+    @staticmethod
+    def _category_of(r: sqlite3.Row) -> str:
+        """Real category, except rigs get one per size.
+
+        All three conditions are required. rigSize alone is not enough: ships
+        carry it too (399 of them) to say which rig size they accept, so keying
+        on the attribute by itself files every frigate under "Rigs (Small)".
+        A rig missing the attribute simply stays in Module rather than vanishing.
+        """
+        category, group = r["categoryName"], r["groupName"]
+        if category == RIG_CATEGORY and group.startswith(RIG_GROUP_PREFIX):
+            size = r["rig_size"]
+            if size is not None:
+                return rig_category(int(size)) or category
+        return category
 
     def materials_for_blueprint(self, blueprint_type_id: int) -> list[Material]:
         rows = self._query(

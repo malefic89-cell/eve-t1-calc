@@ -86,7 +86,7 @@ td.health.neg { background: rgba(248, 81, 73, .10); }
 
 <div id="filters">
   <input id="fSearch" placeholder="Search name…" style="width:160px">
-  <select id="fCategory" style="max-width:150px"><option value="">All categories</option></select>
+  <select id="fCategory" style="max-width:150px"><option value="">All categories</option></select><span class="help" data-tip="Категория предмета из SDE, с одним отличием: риги вынесены из Module в отдельные категории по размеру — Rigs (Small), (Medium), (Large), (Capital). В Module их было 326 из 812, и список групп получался неподъёмным; теперь там 486. Четыре категории ригов стоят рядом и по возрастанию размера, а не по алфавиту. Размер берётся из атрибута rigSize, но только для предметов из групп Rig * — сам атрибут есть и у корпусов кораблей, где означает, какие риги в них влезают.">?</span>
   <select id="fGroup" style="max-width:150px"><option value="">All groups</option></select>
   <label class="dim">Margin ≥<span class="help" data-tip="Минимальная маржа, %: скрыть строки, у которых маржа выбранного сценария ниже указанной. Пусто — показывать все.">?</span></label>
   <input id="fMargin" type="number" value="" style="width:65px" placeholder="%">

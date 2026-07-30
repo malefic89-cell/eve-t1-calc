@@ -131,6 +131,24 @@ class TestItemsStayServedDuringRefresh:
         assert ei.value.status_code == 503
 
 
+class TestCategoryOrder:
+    def test_rigs_stay_together_and_run_small_to_capital(self):
+        cats = ["Ship", "Rigs (Capital)", "Charge", "Rigs (Small)",
+                "Structure", "Rigs (Large)", "Module", "Rigs (Medium)"]
+        out = sorted(cats, key=app._category_sort_key)
+        rigs = [c for c in out if c.startswith("Rigs (")]
+        assert rigs == ["Rigs (Small)", "Rigs (Medium)",
+                        "Rigs (Large)", "Rigs (Capital)"]
+        # contiguous, and sorted where "Rigs" belongs alphabetically
+        first = out.index(rigs[0])
+        assert out[first:first + 4] == rigs
+        assert out[first - 1] == "Module" and out[first + 4] == "Ship"
+
+    def test_non_rig_categories_stay_alphabetical(self):
+        cats = ["Ship", "Charge", "Module", "Asteroid"]
+        assert sorted(cats, key=app._category_sort_key) == sorted(cats)
+
+
 class TestFeesPreview:
     """/api/fees backs the live readout under the Standings section."""
 

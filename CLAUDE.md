@@ -126,6 +126,18 @@ separate problem — rewriting history needs a force-push, so ask first.
   `industryActivityProducts` uses `typeID`/`productTypeID` columns.
 - The categories list must be derived from loaded products, not a raw SDE
   join on blueprint typeID (that returns only "Blueprint").
+- **Rigs are re-categorised out of `Module` into `Rigs (Small|Medium|Large|Capital)`**
+  (`SDE._category_of`), because Module held 812 T1 products in 150 groups — 326
+  of them rigs — and the group filter was unusable. Module is now 486.
+  Requires **both** a `Rig *` group and the `rigSize` attribute (1547): ships
+  carry `rigSize` too (399 of them, saying which rig size they accept), so
+  keying on the attribute alone files every frigate under "Rigs (Small)". A rig
+  missing the attribute stays in Module rather than disappearing.
+  `/api/categories` sorts via `_category_sort_key` so the four sit together
+  under "Rigs" in size order — plain alphabetical gives Capital, Large, Medium,
+  Small. Group names are left exactly as the SDE has them (`Rig Armor`, …).
+  Beware: `"rig" in group_name.lower()` also matches **F-rig-ate** — match on
+  the `"Rig "` prefix.
 - **`ISK/h` is the line ceiling, `ISK/h real` the achievable rate.** The old
   column divides per-job profit by job time only, so on an illiquid item it is
   optimistic by orders of magnitude — the order scenarios take the patient price

@@ -488,6 +488,21 @@ def items():
         return {"rows": S.rows, "stale": S.status != "ready"}
 
 
+_RIG_CATEGORY_ORDER = {
+    sde_mod.rig_category(size): i
+    for i, size in enumerate(sorted(sde_mod.RIG_SIZE_NAMES))
+}
+
+
+def _category_sort_key(name: str) -> tuple[str, int]:
+    """Alphabetical, except the rig categories sort together under "Rigs" and by
+    size rather than alphabetically (which would read Capital, Large, Medium,
+    Small — adjacent but backwards)."""
+    if name in _RIG_CATEGORY_ORDER:
+        return ("Rigs", _RIG_CATEGORY_ORDER[name])
+    return (name, 0)
+
+
 @app.get("/api/categories")
 def categories():
     # Derived from the loaded products so the list always matches the table
@@ -495,7 +510,7 @@ def categories():
     # category — making the filter useless).
     if not S.products:
         raise HTTPException(503, "not ready")
-    return sorted({p.category_name for p in S.products})
+    return sorted({p.category_name for p in S.products}, key=_category_sort_key)
 
 
 @app.get("/api/systems")

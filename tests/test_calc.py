@@ -75,6 +75,47 @@ class TestFees:
         # NPC station floor is 1% (EVE Uni wiki, checked 2026-07)
         assert calc.broker_fee_rate(5, 50.0, 50.0) == pytest.approx(0.01)
 
+    def test_uncapped_shows_where_standing_stops_helping(self):
+        # the uncapped rate keeps falling past the floor, which is how the UI
+        # knows to say "more standing changes nothing"
+        # 3% - 1.5% skill - 1.5% faction - 1.0% corp = -1%, well past the floor
+        assert calc.broker_fee_rate_uncapped(5, 50.0, 50.0) == pytest.approx(-0.01)
+        assert calc.broker_fee_rate_uncapped(5, 10.0, 10.0) == pytest.approx(0.01)
+        assert calc.broker_fee_rate_uncapped(0) == pytest.approx(calc.BROKER_FEE_BASE)
+
+    def test_negative_standing_raises_the_fee(self):
+        # -10/-10 adds 0.3% + 0.2% on top of the 3% base; no ceiling involved
+        assert calc.broker_fee_rate(0, -10.0, -10.0) == pytest.approx(0.035)
+
+    # ---- in-game reference, Logic Circuit, verified 2026-07-30 ----
+    # A sell order priced at 2,316,000 ISK was charged 24,881.59 ISK, i.e.
+    # 1.0743346%. The client displayed "1.07%" and standings "7.89 / 9.44" —
+    # every percentage in that window is rounded to hundredths for display while
+    # the full-precision value is what gets charged, so the ISK figure is the
+    # only trustworthy calibration target.
+    GAME_PRICE = 2_316_000.0
+    GAME_FEE_ISK = 24_881.59
+
+    def test_logic_circuit_in_game_reference(self):
+        fee = self.GAME_PRICE * calc.broker_fee_rate(5, 7.89, 9.44)
+        # Standings entered to 2 decimals can be off by 0.005 each, which moves
+        # the rate by at most 0.03%*0.005 + 0.02%*0.005 = 0.00025 points —
+        # 2.5 ISK per million of order value. The residual here is 3.83 ISK.
+        assert fee == pytest.approx(self.GAME_FEE_ISK, abs=self.GAME_PRICE * 2.5e-6)
+
+    def test_standing_display_rounding_explains_the_residual(self):
+        # Standings carry more decimals than the client shows: 7.8925 / 9.4445
+        # both display as 7.89 / 9.44 and land exactly on the charged amount, so
+        # the gap above is display precision, not an error in the formula.
+        fee = self.GAME_PRICE * calc.broker_fee_rate(5, 7.8925, 9.4445)
+        assert fee == pytest.approx(self.GAME_FEE_ISK, abs=0.01)
+        assert round(7.8925, 2) == 7.89 and round(9.4445, 2) == 9.44
+
+    def test_displayed_percent_is_not_the_charged_rate(self):
+        # taking the client's rounded "1.07%" at face value misses by ~100 ISK
+        assert self.GAME_PRICE * 0.0107 == pytest.approx(24_781.20, abs=0.01)
+        assert abs(self.GAME_PRICE * 0.0107 - self.GAME_FEE_ISK) > 100
+
     def test_sales_tax_zero_skill(self):
         assert calc.sales_tax_rate(0) == pytest.approx(0.075)
 

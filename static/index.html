@@ -147,10 +147,17 @@ td.health.neg { background: rgba(248, 81, 73, .10); }
       <div><label>Industry (0-5)<span class="help" data-tip="Навык Industry: −4% ко времени производства за уровень.">?</span></label><input type="number" min="0" max="5" id="s_industry"></div>
       <div><label>Advanced Industry (0-5)<span class="help" data-tip="Навык Advanced Industry: −3% ко времени производства за уровень.">?</span></label><input type="number" min="0" max="5" id="s_advanced_industry"></div>
     </div>
-    <h3>Standings (Jita 4-4 owner)</h3>
+    <h3>Standings (Jita 4-4 owner)<span class="help" data-tip="Стендинги влияют только на брокерскую комиссию — больше ни на что из того, что считает калькулятор. Причём на комиссию идёт базовый, немодифицированный стендинг: Connections, Diplomacy и Social её не снижают. На стоимость производственной работы стендинги не влияют вообще (у индустрии нет скидки за стендинг). В игре они ещё снижают налог за переработку руды с 5% до 0% при стендинге 6.67, но переработку это приложение не считает. Отрицательный стендинг комиссию повышает.">?</span></h3>
     <div class="grid">
-      <div><label>Faction standing<span class="help" data-tip="Стендинг к фракции Caldari State (владелец Jita 4-4): −0.03% к брокерской комиссии за каждый пункт. Минимум комиссии на NPC-станции — 1%.">?</span></label><input type="number" step="0.01" id="s_faction_standing"></div>
-      <div><label>Corp standing<span class="help" data-tip="Стендинг к корпорации Caldari Navy: −0.02% к брокерской комиссии за каждый пункт.">?</span></label><input type="number" step="0.01" id="s_corp_standing"></div>
+      <div><label>Faction standing<span class="help" data-tip="Стендинг к фракции Caldari State (владелец Jita 4-4): −0.03% к брокерской комиссии за каждый пункт. Минимум комиссии на NPC-станции — 1%. ВПИСЫВАЙ БАЗОВЫЙ СТЕНДИНГ, НЕ ЭФФЕКТИВНЫЙ: комиссия считается от немодифицированного значения, и навыки Connections, Diplomacy, Social на неё не влияют, хотя эффективный стендинг поднимают. В карточке персонажа показан именно эффективный — он выше базового, и если взять его, комиссия окажется занижена.">?</span></label><input type="number" step="0.01" id="s_faction_standing"></div>
+      <div><label>Corp standing<span class="help" data-tip="Стендинг к корпорации Caldari Navy: −0.02% к брокерской комиссии за каждый пункт. Пункт корпоративного стендинга дешевле фракционного (0.02% против 0.03%). Тоже базовый, не эффективный — см. подсказку у Faction standing.">?</span></label><input type="number" step="0.01" id="s_corp_standing"></div>
+    </div>
+    <div class="dim" style="font-size:11px; margin-top:-2px">
+      Base (unmodified) standings — Connections / Diplomacy / Social raise your
+      effective standing but do not affect the broker fee.
+    </div>
+    <div class="dim" style="line-height:1.6">
+      <b id="feeHeadline" style="color:var(--text)"></b><span class="help" data-tip="Комиссия за выставление своего ордера, от суммы ордера. При мгновенной сделке по чужому ордеру не платится. Игра округляет все проценты в окне ордера до сотых, но списывает полную точность: на ордере в 2 316 000 ISK клиент показал «1.07%», а списал 24 881.59 ISK, то есть 1.0743346%. Считать по показанному проценту нельзя — промах около 100 ISK. То же с налогом: пишет 3.37, берёт 3.375. Стендинги игра тоже хранит точнее двух знаков, поэтому если вписать их из клиента, ставка разойдётся с игрой не более чем на 0.00025 п.п. — это 2.5 ISK на миллион суммы ордера. Сама формула верна: проверено в игре 2026-07-30.">?</span><span id="feeRest"></span>
     </div>
     <h3>Blueprint</h3>
     <div class="grid">
@@ -422,9 +429,53 @@ const S_FIELDS = ["accounting","broker_relations","industry","advanced_industry"
   "structure_material_bonus","structure_rig_material_bonus","structure_time_bonus",
   "structure_tax","structure_cost_bonus","max_days_to_sell"];
 
+// ---------- live fee preview under the Standings section ----------
+// The rates come from the server so calc.py stays the only place the broker-fee
+// formula lives; duplicating it here is how the 0.5%->1% floor change would rot.
+// 4 decimals, trailing zeros stripped. Not cosmetic: standings take 2 decimals
+// and faction is 0.03%/point, so a contribution can carry 4 — rounding to 3
+// made the breakdown fail to add up to its own total (3 − 1.5 − 0.249 − 0.191
+// read as 1.060 next to a stated 1.059).
+const pct = n => n.toFixed(4).replace(/\.?0+$/, "") + "%";
+let feeTimer = null;
+function refreshFeePreview() {
+  clearTimeout(feeTimer);
+  feeTimer = setTimeout(async () => {
+    const num = id => {
+      const v = parseFloat(document.getElementById("s_" + id).value);
+      return isNaN(v) ? 0 : v;
+    };
+    const q = new URLSearchParams({
+      broker_relations: num("broker_relations"), faction_standing: num("faction_standing"),
+      corp_standing: num("corp_standing"), accounting: num("accounting"),
+    });
+    try {
+      const f = await (await fetch("/api/fees?" + q)).json();
+      // headline and rest are separate nodes so the "?" between them is static
+      // markup — a re-render mid-hover would otherwise strand its tooltip open
+      document.getElementById("feeHeadline").textContent =
+        `Broker fee ${pct(f.broker_fee_pct)}`;
+      document.getElementById("feeRest").innerHTML =
+        ` · sales tax ${pct(f.sales_tax_pct)} · total on a sale ${pct(f.total_sell_pct)}<br>`
+        + `${pct(f.base_pct)} base − ${pct(f.from_skill_pct)} Broker Relations`
+        + ` − ${pct(f.from_faction_pct)} faction − ${pct(f.from_corp_pct)} corp`
+        + ` = ${pct(f.broker_fee_uncapped_pct)}`
+        + (f.at_floor
+            ? `, floored at ${pct(f.floor_pct)} — more standing changes nothing`
+            : f.standings_saving_pct < -0.0005
+              // negative standing with the owner makes you pay more, not less
+              ? `, standings cost you ${pct(-f.standings_saving_pct)}`
+              : `, standings save ${pct(f.standings_saving_pct)}`);
+    } catch (e) { /* server busy */ }
+  }, 150);
+}
+["accounting", "broker_relations", "faction_standing", "corp_standing"].forEach(f =>
+  document.getElementById("s_" + f).addEventListener("input", refreshFeePreview));
+
 document.getElementById("btnSettings").onclick = async () => {
   SETTINGS = await (await fetch("/api/settings")).json();
   S_FIELDS.forEach(f => document.getElementById("s_" + f).value = SETTINGS[f]);
+  refreshFeePreview();
   selectedSystem = null;
   const curIdx = SETTINGS.current_manufacturing_index;
   document.getElementById("s_system_current").textContent =

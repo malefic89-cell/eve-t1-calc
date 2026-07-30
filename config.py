@@ -17,7 +17,9 @@ class Settings:
     industry: int = 5
     advanced_industry: int = 5
 
-    # Standings toward the NPC station owner (Jita 4-4: Caldari Navy / Caldari State)
+    # Standings toward the NPC station owner (Jita 4-4: Caldari Navy / Caldari
+    # State). Base/unmodified values — the broker fee ignores standing skills,
+    # so the effective standing from the character sheet is the wrong number.
     faction_standing: float = 0.0
     corp_standing: float = 0.0
 

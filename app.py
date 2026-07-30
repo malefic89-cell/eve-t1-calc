@@ -434,6 +434,43 @@ def put_settings(payload: dict):
     return s.to_dict()
 
 
+@app.get("/api/fees")
+def fees(
+    broker_relations: float = 0.0,
+    faction_standing: float = 0.0,
+    corp_standing: float = 0.0,
+    accounting: float = 0.0,
+):
+    """Live fee preview for the values being typed in the settings modal.
+
+    The formulas stay in calc so the page never carries a second copy that can
+    drift — the NPC broker floor already moved from 0.5% to 1% once. Skill levels
+    are floats here on purpose: this previews half-typed input and must not 422.
+
+    Standings affect the broker fee and nothing else the app models. (In game
+    they also cut the NPC reprocessing tax, which is out of scope, and they do
+    not touch industry job cost at all.)
+    """
+    uncapped = calc.broker_fee_rate_uncapped(broker_relations, faction_standing, corp_standing)
+    fee = calc.broker_fee_rate(broker_relations, faction_standing, corp_standing)
+    fee_no_standing = calc.broker_fee_rate(broker_relations)
+    tax = calc.sales_tax_rate(accounting)
+    return {
+        "broker_fee_pct": fee * 100,
+        "broker_fee_uncapped_pct": uncapped * 100,
+        "at_floor": uncapped <= calc.BROKER_FEE_FLOOR,
+        "floor_pct": calc.BROKER_FEE_FLOOR * 100,
+        "base_pct": calc.BROKER_FEE_BASE * 100,
+        "from_skill_pct": calc.BROKER_FEE_PER_SKILL * broker_relations * 100,
+        "from_faction_pct": calc.BROKER_FEE_PER_FACTION * faction_standing * 100,
+        "from_corp_pct": calc.BROKER_FEE_PER_CORP * corp_standing * 100,
+        # what the standings actually buy, after the floor is taken into account
+        "standings_saving_pct": (fee_no_standing - fee) * 100,
+        "sales_tax_pct": tax * 100,
+        "total_sell_pct": (fee + tax) * 100,
+    }
+
+
 @app.get("/api/items")
 def items():
     # Keep serving the last computed rows while a price refresh is in flight:

@@ -63,14 +63,47 @@ def estimated_item_value(base_materials: list[tuple[int, float]], runs: int = 1)
 
 # ---------- fees ----------
 
+BROKER_FEE_BASE = 0.03
+BROKER_FEE_FLOOR = 0.01           # NPC stations never go below 1%
+BROKER_FEE_PER_SKILL = 0.003      # per level of Broker Relations
+BROKER_FEE_PER_FACTION = 0.0003   # per point of standing toward the owning faction
+BROKER_FEE_PER_CORP = 0.0002      # per point of standing toward the owning corp
+
+
+def broker_fee_rate_uncapped(
+    broker_relations: int,
+    faction_standing: float = 0.0,
+    corp_standing: float = 0.0,
+) -> float:
+    """The fee before the floor is applied.
+
+    Only useful for telling the user when more standing has stopped helping —
+    never charge this, charge broker_fee_rate.
+    """
+    return (
+        BROKER_FEE_BASE
+        - BROKER_FEE_PER_SKILL * broker_relations
+        - BROKER_FEE_PER_FACTION * faction_standing
+        - BROKER_FEE_PER_CORP * corp_standing
+    )
+
+
 def broker_fee_rate(
     broker_relations: int,
     faction_standing: float = 0.0,
     corp_standing: float = 0.0,
 ) -> float:
-    """NPC station broker fee as a fraction. Floor 1%."""
-    rate = 0.03 - 0.003 * broker_relations - 0.0003 * faction_standing - 0.0002 * corp_standing
-    return max(0.01, rate)
+    """NPC station broker fee as a fraction. Floor 1%.
+
+    Standings are the **unmodified** (base) values: the fee ignores standing
+    skills entirely, so Connections/Diplomacy/Social must not appear here even
+    though they raise effective standing. Broker Relations is the only skill
+    that reduces this fee.
+    """
+    return max(
+        BROKER_FEE_FLOOR,
+        broker_fee_rate_uncapped(broker_relations, faction_standing, corp_standing),
+    )
 
 
 def sales_tax_rate(accounting: int) -> float:

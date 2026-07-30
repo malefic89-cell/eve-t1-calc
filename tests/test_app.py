@@ -131,6 +131,54 @@ class TestItemsStayServedDuringRefresh:
         assert ei.value.status_code == 503
 
 
+class TestFeesPreview:
+    """/api/fees backs the live readout under the Standings section."""
+
+    def test_max_skill_and_standings_land_exactly_on_the_floor(self):
+        f = app.fees(broker_relations=5, faction_standing=10, corp_standing=10, accounting=5)
+        assert f["broker_fee_pct"] == pytest.approx(1.0)      # 3 - 1.5 - 0.3 - 0.2
+        assert f["broker_fee_uncapped_pct"] == pytest.approx(1.0)
+        assert f["at_floor"] is True
+        assert f["sales_tax_pct"] == pytest.approx(3.375)
+        assert f["total_sell_pct"] == pytest.approx(4.375)
+
+    def test_breakdown_adds_up(self):
+        f = app.fees(broker_relations=3, faction_standing=5, corp_standing=2)
+        total = (f["base_pct"] - f["from_skill_pct"]
+                 - f["from_faction_pct"] - f["from_corp_pct"])
+        assert total == pytest.approx(f["broker_fee_uncapped_pct"])
+        assert f["at_floor"] is False
+
+    def test_extra_standing_past_the_floor_buys_nothing(self):
+        a = app.fees(broker_relations=5, faction_standing=50, corp_standing=50)
+        b = app.fees(broker_relations=5, faction_standing=10, corp_standing=10)
+        assert a["broker_fee_pct"] == pytest.approx(b["broker_fee_pct"])
+        assert a["broker_fee_uncapped_pct"] < a["floor_pct"]
+        assert a["at_floor"] and b["at_floor"]
+
+    def test_standings_saving_is_after_the_floor(self):
+        # BR0: 3% -> 2.5%, a real 0.5% saving
+        assert app.fees(0, 10, 10)["standings_saving_pct"] == pytest.approx(0.5)
+        # BR5 already sits at 1.5%; standings can only buy 0.5% before the floor
+        assert app.fees(5, 50, 50)["standings_saving_pct"] == pytest.approx(0.5)
+
+    def test_negative_standing_raises_the_fee(self):
+        f = app.fees(broker_relations=0, faction_standing=-10, corp_standing=-10)
+        assert f["broker_fee_pct"] == pytest.approx(3.5)
+        assert f["at_floor"] is False
+
+    def test_fractional_input_does_not_blow_up(self):
+        # the preview runs on half-typed values and must never 422
+        f = app.fees(broker_relations=4.5, accounting=2.5)
+        assert f["broker_fee_pct"] == pytest.approx(1.65)
+        assert f["sales_tax_pct"] == pytest.approx(7.5 * (1 - 0.11 * 2.5))
+
+    def test_defaults_are_the_untrained_case(self):
+        f = app.fees()
+        assert f["broker_fee_pct"] == pytest.approx(3.0)
+        assert f["sales_tax_pct"] == pytest.approx(7.5)
+
+
 class TestBlueprintOverrideRollback:
     @pytest.fixture(autouse=True)
     def _isolate_settings_file(self, tmp_path, monkeypatch):

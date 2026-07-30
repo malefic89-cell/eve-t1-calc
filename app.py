@@ -190,6 +190,13 @@ def compute_row(p: sde_mod.Product) -> dict:
     t_run = calc.production_time(
         p.base_time, te, st.industry, st.advanced_industry, st.structure_time_bonus
     )
+    # The cap comes from the EXACT per-run time, not the whole seconds shown.
+    # Verified in game: Damage Control I at an NPC station displays 8m10s (490 s)
+    # per run yet allows 5295 runs = ceil(30d / 489.6); dividing the displayed
+    # 490 gives 5290, five short. The client rounds what it prints and computes
+    # from full precision, exactly as it does with fee percentages.
+    t_run_s = round(t_run)          # display only
+    max_runs = calc.max_runs_per_job(t_run)
 
     # A material with no adjusted price contributes 0 to EIV, understating the
     # job cost. Deliberate: CCP publishes adjusted prices for everything that
@@ -268,7 +275,12 @@ def compute_row(p: sde_mod.Product) -> dict:
         "category": p.category_name,
         "qty_per_run": p.quantity_per_run,
         "runs": runs,
-        "time_per_run_s": round(t_run),
+        "time_per_run_s": t_run_s,
+        "max_runs_per_job": max_runs,
+        # the numbers below stay arithmetically right, but such a job cannot be
+        # installed in game at all — flag it rather than hide it, since it is the
+        # user's own Runs setting talking, not bad data
+        "over_job_limit": max_runs is not None and runs > max_runs,
         "material_cost_instant": mc_i,
         "material_cost_orders": mc_o,
         "job_cost": jcost,

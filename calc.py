@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from datetime import date, timedelta
 
 SCC_SURCHARGE = 0.04  # 4% of EIV
+MAX_JOB_SECONDS = 30 * 24 * 3600  # a job cannot be installed past 30 days
 
 
 # ---------- materials ----------
@@ -94,6 +95,28 @@ def production_time(
         * (1 - 0.03 * advanced_industry)
         * (1 - structure_time_bonus_pct / 100)
     )
+
+
+def max_runs_per_job(time_per_run_s: float) -> int | None:
+    """Largest run count installable in one job: ceil(30 days / time per run).
+
+    EVE refuses a manufacturing job whose total time would run past 30 days, so
+    the cap depends on TE, skills and structure bonuses — pass the already
+    modified per-run time, **unrounded**: the client rounds the duration it
+    displays but computes the cap from full precision, so feeding it whole
+    seconds undercounts (verified in game, see tests).
+
+    The accepted maximum lands one run *over* the limit — Damage Control I caps
+    at 5295 runs of 489.6 s = 30.005 days, where 5294 would still fit inside —
+    hence ceil rather than floor.
+
+    Items whose single run already exceeds 30 days (capitals, supers) are exempt
+    from the cap, so the floor of 1 is a real allowance, not a clamp.
+    None when the time is unknown.
+    """
+    if time_per_run_s <= 0:
+        return None
+    return max(1, math.ceil(MAX_JOB_SECONDS / time_per_run_s))
 
 
 # ---------- order book pricing ----------

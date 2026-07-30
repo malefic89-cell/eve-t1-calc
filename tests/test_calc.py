@@ -92,6 +92,48 @@ class TestProductionTime:
         assert calc.production_time(1000, 0, 0, 0) == 1000
 
 
+class TestMaxRunsPerJob:
+    def test_damage_control_in_game_reference(self):
+        """Verified in game 2026-07-30. Damage Control I, NPC station, TE 20,
+        Industry 5, Advanced Industry 5: the client showed 8m10s per run and
+        capped Runs at 5295. This pins both open questions at once."""
+        t = calc.production_time(900, te=20, industry=5, advanced_industry=5)
+        assert round(t) == 490                      # matches the displayed 8m10s
+        assert calc.max_runs_per_job(t) == 5295     # the observed cap
+
+        # 1. The cap uses the EXACT per-run time. The displayed whole seconds
+        #    would give 5290 — five short — so don't "simplify" to round(t).
+        assert calc.max_runs_per_job(round(t)) == 5290
+
+        # 2. It is ceil, not floor: 5295 runs overshoot 30 days while 5294 fit,
+        #    so the game grants the run that crosses the line.
+        assert 5295 * t > calc.MAX_JOB_SECONDS
+        assert 5294 * t < calc.MAX_JOB_SECONDS
+
+    def test_forum_worked_example(self):
+        # 1h42m per run: ceil(2_592_000 / 6_120) = 424, and 424 runs is 30.03
+        # days — the accepted maximum sits just over the limit, so ceil not floor
+        assert calc.max_runs_per_job(6_120) == 424
+        assert 424 * 6_120 > calc.MAX_JOB_SECONDS
+        assert 423 * 6_120 < calc.MAX_JOB_SECONDS
+
+    def test_exact_division_is_not_rounded_up(self):
+        # a run time that divides 30 days evenly: that many runs fit exactly
+        assert calc.max_runs_per_job(calc.MAX_JOB_SECONDS / 100) == 100
+
+    def test_fast_item(self):
+        assert calc.max_runs_per_job(131) == 19_787
+
+    def test_single_run_over_30_days_is_exempt(self):
+        # capitals/supers exceed the cap with one run and are allowed anyway
+        assert calc.max_runs_per_job(3_916_800) == 1     # Erebus
+        assert calc.max_runs_per_job(calc.MAX_JOB_SECONDS * 10) == 1
+
+    def test_unknown_time(self):
+        assert calc.max_runs_per_job(0) is None
+        assert calc.max_runs_per_job(-5) is None
+
+
 class TestVolumeWeightedPrice:
     def test_single_order(self):
         assert calc.volume_weighted_price([[10.0, 100]], 50) == pytest.approx(10.0)

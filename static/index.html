@@ -92,7 +92,7 @@ td.health.neg { background: rgba(248, 81, 73, .10); }
   <input id="fMargin" type="number" value="" style="width:65px" placeholder="%">
   <label class="dim">Vol/day ≥<span class="help" data-tip="Минимальный дневной объём торгов: скрыть предметы, которых продаётся меньше указанного числа штук в день. Отсекает неликвид.">?</span></label>
   <input id="fVolume" type="number" value="" style="width:65px" placeholder="any">
-  <label class="dim">Runs<span class="help" data-tip="Число прогонов одного job для всех чертежей без индивидуальной настройки. Влияет на округление материалов (экономия ME накапливается), глубину закупки/продажи в стакане, job cost и время.">?</span></label>
+  <label class="dim">Runs<span class="help" data-tip="Число прогонов одного job для всех чертежей без индивидуальной настройки. Влияет на округление материалов (экономия ME накапливается), глубину закупки/продажи в стакане, job cost и время. У BPO прогоны не кончаются, но один job в игре ограничен 30 сутками суммарного времени: строки, где выбранное число прогонов не влезает в лимит, помечаются бейджем &gt;30d.">?</span></label>
   <input id="fRuns" type="number" min="1" value="1" style="width:65px">
   <label class="dim">Scenario<span class="help" data-tip="Сценарий торговли для колонок Margin % и ISK/h. Inst — мгновенно по текущим ордерам, Order — своим ордером (дешевле купить / дороже продать, но дольше и с брокерской комиссией). Формат: покупка материалов → продажа продукта.">?</span></label>
   <select id="fScenario">
@@ -227,6 +227,7 @@ const badges = r =>
   (r.suspicious ? `<span class="badge warn" title="Подозрительные данные SDE: пустой рецепт или себестоимость < 1% цены продажи">⚠ data</span>` : "") +
   (r.wide_spread ? `<span class="badge warn" title="Широкий спред при низком объёме (ask/bid > 3, < 100 шт/день): маржа между ордерами не выкупается">spread</span>` : "") +
   (r.unpriceable ? `<span class="badge warn" title="Часть материалов невозможно купить с sell-ордеров в Jita в нужном количестве — реальная себестоимость неизвестна">no input</span>` : "") +
+  (r.over_job_limit ? `<span class="badge warn" title="Такой job в игре не установить: суммарное время выходит за лимит 30 суток. Максимум для этого предмета при текущих TE, навыках и структуре — ${fmt(r.max_runs_per_job)} прогонов. Цифры в строке арифметически верны, но работу не поставить. Максимум считается от точного времени прогона, а не от округлённых секунд в колонке — игра тоже так делает, поэтому делением показанного числа секунд получится чуть меньше. Проверено в игре: Damage Control I на NPC-станции показывает 8м10с на прогон и разрешает 5295 прогонов, тогда как 2 592 000 / 490 дало бы 5290.">&gt;30d</span>` : "") +
   (r.low_liquidity ? `<span class="badge warn" title="Низкая ликвидность: произведённое за job количество превышает N дней среднего объёма торгов (настройка Max days to sell)">low liq</span>` : "");
 
 function render() {
@@ -477,6 +478,7 @@ async function openDetail(typeId) {
     <h2>${r.name}${badges(r)}</h2>
     <p class="dim">${r.category} / ${r.group} · ${r.qty_per_run} per run ·
       ${(r.time_per_run_s/60).toFixed(1)} min/run · job: ${r.runs} run${r.runs > 1 ? "s" : ""} ·
+      max ${fmt(r.max_runs_per_job)} runs/job (30-day limit) ·
       job cost ${fmtIsk(r.job_cost)} ISK</p>
     <p class="dim">Sell price: top ask ${fmtIsk(r.sell_top_ask)} · history p5 (30d) ${fmtIsk(r.sell_hist_p5)}
       → realistic <b>${fmtIsk(r.sell_via_sell_order)}</b> ISK/unit</p>

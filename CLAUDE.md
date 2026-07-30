@@ -55,8 +55,59 @@ separate problem — rewriting history needs a force-push, so ask first.
   Facility tax applies to **full EIV**, not to EIV×SCI.
 - **Material rounding is per job**: `max(runs, ceil(round(qty, 2)))`, bonuses
   multiplicative — never simplify to per-run × runs.
+- **A job cannot be installed past 30 days**, so runs per job are capped at
+  `ceil(30 days / modified time per run)` (`calc.max_runs_per_job`) — it depends
+  on TE, skills and structure, not on the blueprint. The accepted maximum lands
+  one run *over* 30 days (424 × 6120 s = 30.03 days installs), hence ceil.
+  Items whose single run already exceeds 30 days are exempt, so the floor of 1
+  is a real allowance. A BPO itself has unlimited runs; only the job is capped.
+  Rows past the cap get the `>30d` badge and are **not** hidden by the BPC/susp
+  filter — the cause is the user's own Runs setting, not bad data.
+  `Settings.runs` allows up to 1e6 as a sanity bound only; at Runs=1000, 694 of
+  1845 products exceed the in-game cap.
+  **Verified in game 2026-07-30** (regression test exists): Damage Control I at
+  an NPC station, TE 20 / Industry 5 / Advanced Industry 5 — the client showed
+  8m10s per run and capped Runs at **5295**. That single number settled both
+  open questions:
+  - the cap is computed from the **exact** per-run time (489.6 s), *not* the
+    whole seconds displayed — `ceil(30d/490)` would give 5290, five short. Pass
+    `t_run`, never `round(t_run)`; `t_run_s` is for display only. An earlier
+    version used the rounded value on the theory that the badge should be
+    checkable by dividing the displayed seconds — that was wrong, don't restore it.
+  - it is `ceil`, not `floor`: 5295 × 489.6 = 30.005 days is accepted while 5294
+    still fits inside 30 days, so the game grants the run that crosses the line.
+  This is the same display-vs-precision split as the fee percentages above.
 - **Broker fee floor is 1%** on NPC stations (changed from 0.5% at some point);
-  sales tax base 7.5%, −11%/Accounting level.
+  sales tax base 7.5%, −11%/Accounting level. The rate coefficients live in
+  `calc.BROKER_FEE_*`; `GET /api/fees` previews them for the settings modal so
+  the page never carries a second copy of the formula.
+- **Standings affect the broker fee and nothing else here** (verified against
+  CCP support + EVE Uni wiki, 2026-07): −0.03%/point faction, −0.02%/point corp,
+  and negative standing *raises* the fee. In game they also cut the NPC
+  reprocessing tax (5% → 0% at 6.67 standing), which this app does not model, and
+  they have **no** effect on industry job cost — so `calc.job_cost` is right to
+  ignore them. Don't "fix" that by adding a standing term.
+- **The client rounds every percentage it displays to hundredths but charges the
+  full-precision value** — calibrate against ISK amounts, never against a shown
+  `%`. Verified 2026-07-30 on a Logic Circuit sell order: price 2,316,000 ISK,
+  broker fee charged 24,881.59 ISK = 1.0743346%, while the window said "1.07%"
+  (taking that at face value misses by 100 ISK). Sales tax behaves the same:
+  displayed 3.37, charged 3.375.
+  **Standings are also carried beyond the two decimals shown**, so entering them
+  from the client leaves a residual: the rate can be off by at most
+  0.03%×0.005 + 0.02%×0.005 = 0.00025 points, i.e. 2.5 ISK per million of order
+  value. Confirmed rather than assumed — 7.8925/9.4445 both display as
+  7.89/9.44 and reproduce the charged 24,881.59 exactly. Three regression tests
+  in `TestFees` pin this; don't "tighten" their tolerance to an exact match.
+- **The broker fee uses UNMODIFIED (base) standings.** `Connections`,
+  `Diplomacy` and `Social` raise *effective* standing but do not touch the fee —
+  EVE Uni's Tax page states it outright ("the broker's fee is based on unmodified
+  standings and does not take any standing skills into account"), and only
+  `Broker Relations` reduces it. So `broker_fee_rate` takes no skill argument
+  beyond Broker Relations, and that is correct — **do not add a Connections
+  term**. The settings fields expect base standings; the in-game character sheet
+  shows the *effective* value, which is higher, so pasting it understates the
+  fee. Both field tooltips and a visible line under the Standings grid say so.
 - **ESI history returns 400** for type_ids that never trade — `esi._get`
   treats all 4xx as `ESIError`, and the history fetch pool must survive
   per-item failures. Don't "clean up" that error handling.
@@ -105,6 +156,19 @@ separate problem — rewriting history needs a force-push, so ask first.
   add a regression test for each verified value.
 - UI language is English; help tooltips ("?" icons) are in Russian — keep new
   UI elements consistent with that split, and add a tooltip to anything new.
+- **Tooltip coverage is expected, not optional.** Every table column, every
+  settings field and every section heading (`<h3>`) carries a `?` where it adds
+  value. Section tooltips explain what the group as a whole does and the
+  non-obvious cross-cutting facts (e.g. no skill reduces materials; structure
+  bonuses multiply rather than add); field tooltips cover that one parameter.
+  When a section has a single field, put the `?` on the heading only — two
+  identical icons side by side is noise. Prefer `data-tip` in static markup;
+  JS-built blocks (the detail modal) are fine since they render once per open.
+  What must **not** happen is a `?` inside a block that re-renders while the
+  user may be hovering it — the fee preview rebuilds on every keystroke, so its
+  `?` is static markup between two JS-filled spans, or `mouseout` never fires
+  and the tooltip stays stranded. Keep `"` out of tip text either way: the
+  attribute is double-quoted, so use «guillemets».
 - After changing app.py/calc.py, restart the server (it holds modules in
   memory); static/index.html needs no restart, just a browser refresh.
 - PowerShell here-strings: keep double quotes out of `git commit -m @'...'@`

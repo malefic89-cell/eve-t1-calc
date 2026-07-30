@@ -140,7 +140,7 @@ td.health.neg { background: rgba(248, 81, 73, .10); }
   <div class="modal">
     <button class="close" onclick="closeModal('settingsModal')">✕</button>
     <h2>Settings</h2>
-    <h3>Skills</h3>
+    <h3>Skills<span class="help" data-tip="Натренированные уровни навыков, 0–5. Два влияют на деньги: Accounting снижает налог с продаж, Broker Relations — брокерскую комиссию. Два на время: Industry и Advanced Industry сокращают производство. На расход материалов навыки не влияют вообще — экономию материалов дают только ME чертежа, бонус структуры и ME-риг. Значения здесь считаются как есть: калькулятор не проверяет твои настоящие навыки, он считает по тому, что вписано.">?</span></h3>
     <div class="grid">
       <div><label>Accounting (0-5)<span class="help" data-tip="Навык Accounting: снижает налог с продаж на 11% за уровень. База 7.5%, при V — 3.375%. Налог платится с каждой продажи.">?</span></label><input type="number" min="0" max="5" id="s_accounting"></div>
       <div><label>Broker Relations (0-5)<span class="help" data-tip="Навык Broker Relations: снижает брокерскую комиссию на 0.3% за уровень (база 3%). Комиссия платится только при выставлении своих ордеров.">?</span></label><input type="number" min="0" max="5" id="s_broker_relations"></div>
@@ -159,12 +159,12 @@ td.health.neg { background: rgba(248, 81, 73, .10); }
     <div class="dim" style="line-height:1.6">
       <b id="feeHeadline" style="color:var(--text)"></b><span class="help" data-tip="Комиссия за выставление своего ордера, от суммы ордера. При мгновенной сделке по чужому ордеру не платится. Игра округляет все проценты в окне ордера до сотых, но списывает полную точность: на ордере в 2 316 000 ISK клиент показал «1.07%», а списал 24 881.59 ISK, то есть 1.0743346%. Считать по показанному проценту нельзя — промах около 100 ISK. То же с налогом: пишет 3.37, берёт 3.375. Стендинги игра тоже хранит точнее двух знаков, поэтому если вписать их из клиента, ставка разойдётся с игрой не более чем на 0.00025 п.п. — это 2.5 ISK на миллион суммы ордера. Сама формула верна: проверено в игре 2026-07-30.">?</span><span id="feeRest"></span>
     </div>
-    <h3>Blueprint</h3>
+    <h3>Blueprint<span class="help" data-tip="Значения по умолчанию для всех чертежей, у которых не задана индивидуальная настройка. ME снижает расход материалов на 1% за уровень (максимум 10), TE — время производства на 1% за уровень (максимум 20). Свежекупленный BPO идёт с ME 0 / TE 0, максимум даёт полностью исследованный чертёж, поэтому 10/20 здесь — это допущение, а не факт про твои чертежи. Индивидуальные ME, TE и Runs для конкретного чертежа задаются в деталях предмета — клик по строке таблицы; там же видно, действует ли для него своя настройка или глобальная.">?</span></h3>
     <div class="grid">
       <div><label>ME (0-10)<span class="help" data-tip="Material Efficiency чертежа по умолчанию: −1% материалов за уровень. Для отдельного чертежа можно задать своё значение в деталях предмета.">?</span></label><input type="number" min="0" max="10" id="s_blueprint_me"></div>
       <div><label>TE (0-20)<span class="help" data-tip="Time Efficiency чертежа по умолчанию: −1% времени производства за уровень (0–20). Переопределяется в деталях предмета.">?</span></label><input type="number" min="0" max="20" id="s_blueprint_te"></div>
     </div>
-    <h3>Structure</h3>
+    <h3>Structure<span class="help" data-tip="Бонусы инженерного комплекса, где стоит производство. Бонусы к материалам умножаются, а не складываются: ME чертежа, бонус структуры и ME-риг применяются последовательно, поэтому складывать их проценты нельзя. Округление материалов идёт один раз на весь job, а не на каждый прогон, поэтому при большом Runs экономия ME накапливается. Для NPC-станции ставь нули везде, кроме Structure tax — там 0.25%.">?</span></h3>
     <div class="grid">
       <div><label>Material bonus %<span class="help" data-tip="Бонус структуры к расходу материалов: у Raitaru/Azbel/Sotiyo это 1%. Для NPC-станции — 0.">?</span></label><input type="number" step="0.1" id="s_structure_material_bonus"></div>
       <div><label>Rig material bonus %<span class="help" data-tip="Бонус ME-рига структуры с учётом множителя региона: T1-риг 2% (×1 в hisec = 2%, ×1.9 в lowsec = 3.8%, ×2.1 в null = 4.2%). Если риг не подходит к предмету — ставь 0.">?</span></label><input type="number" step="0.1" id="s_structure_rig_material_bonus"></div>
@@ -173,14 +173,14 @@ td.health.neg { background: rgba(248, 81, 73, .10); }
       <div><label>Job cost bonus % (Raitaru 3, Azbel 4, Sotiyo 5)<span class="help" data-tip="Бонус профиля инженерного комплекса к стоимости работы: уменьшает часть EIV × индекс системы. Raitaru 3%, Azbel 4%, Sotiyo 5%; NPC-станция — 0.">?</span></label>
         <input type="number" step="0.1" id="s_structure_cost_bonus"></div>
     </div>
-    <h3>Liquidity</h3>
+    <h3>Liquidity<span class="help" data-tip="Порог для бейджа low liq: за сколько дней среднего дневного объёма торгов должен распродаваться выпуск одного job. Если произведённого больше — строка помечается: продать быстро не выйдет, ордер будет висеть. Дневной объём — среднее за 7 календарных дней по региону The Forge, причём дни без сделок считаются нулями. Эта настройка задаёт только порог бейджа и ни на одну денежную колонку не влияет; на цифры влияет тот же объём, но через колонку ISK/h real, которая ограничивает темп рынком.">?</span></h3>
     <div class="grid">
-      <div><label>Max days to sell<span class="help" data-tip="За сколько дней среднего дневного объёма торгов должен продаваться выпуск одного job. Если произведённое количество больше — строка получает бейдж low liq: продать быстро не выйдет, ордер будет висеть.">?</span></label><input type="number" min="1" max="365" id="s_max_days_to_sell"></div>
+      <div><label>Max days to sell</label><input type="number" min="1" max="365" id="s_max_days_to_sell"></div>
     </div>
-    <h3>Manufacturing system</h3>
+    <h3>Manufacturing system<span class="help" data-tip="Система, где стоит производство: определяет индекс стоимости работ (доля производства этой системы во всём кластере за 28 дней). Чем популярнее система, тем дороже установка работы. Индекс влияет только на слагаемое EIV × индекс: налог структуры и 4% сбора SCC берутся от полного EIV и от системы не зависят вообще. Индексы тянутся из ESI и кэшируются на час; текущий показан под полем, а в выпадающем списке — для каждой найденной системы, так что соседние можно сравнить перед выбором.">?</span></h3>
     <div class="grid">
       <div style="grid-column: span 2">
-        <label>System (type to search)<span class="help" data-tip="Система, где стоит производство: определяет индекс стоимости работ (доля производства системы во всём кластере за 28 дней). Чем популярнее система, тем дороже установка работы. Индекс показывается в подсказках списка.">?</span></label>
+        <label>System (type to search)</label>
         <input id="s_system_search" list="systemList" placeholder="e.g. Sobaseki">
         <datalist id="systemList"></datalist>
         <div class="dim" id="s_system_current"></div>
@@ -544,9 +544,11 @@ async function openDetail(typeId) {
            <span class="dim">custom for this blueprint</span>`
         : `<span class="dim">global default</span>`}
     </p>
-    <h3>Materials (per job, ME applied)</h3>
+    <h3>Materials (per job, ME applied)<span class="help" data-tip="Рецепт на весь job с уже применёнными ME чертежа, бонусом структуры и ME-ригом. Округление одно на весь job: количество считается как max(runs, ceil(round(база × runs × множители, 2))), поэтому при большом Runs расход на прогон получается меньше, чем при Runs 1. Каждый вход берётся по своему type_id из стакана Jita 4-4 — и минералы, и готовые модули, если рецепт их потребляет.">?</span></h3>
     <table><thead><tr><th class="left">Material</th><th>Base</th><th>With ME</th>
-      <th>Sell price (VW)</th><th>Buy order (real)</th><th>Cost (instant)</th></tr></thead><tbody>
+      <th>Sell price (VW)<span class="help" data-tip="Цена мгновенной покупки, взвешенная по глубине стакана: сколько в среднем выйдет единица, если выкупить нужное количество, идя по sell-ордерам сверху вниз. Для крупных партий она выше лучшего ордера. Прочерк — в стакане не хватает объёма на такую закупку.">?</span></th>
+      <th>Buy order (real)<span class="help" data-tip="Достижимая цена своего buy-ордера: лучший бид, поднятый до 95-го перцентиля средних дневных цен за 30 дней истории. Голый лоуболл-бид на неликвиде не заполнится, поэтому чистый топ-бид был бы обманом.">?</span></th>
+      <th>Cost (instant)<span class="help" data-tip="Стоимость этого материала на весь job при мгновенной закупке: цена VW × количество с учётом ME. Сумма по столбцу — строка Total, где вторая цифра посчитана по ценам своих buy-ордеров.">?</span></th></tr></thead><tbody>
       ${d.materials.map(m => `<tr>
         <td class="left">${m.name}</td><td>${fmt(m.base_qty)}</td><td>${fmt(m.qty_with_me)}</td>
         <td>${fmtIsk(m.vw_sell_price)}</td>
@@ -556,7 +558,7 @@ async function openDetail(typeId) {
       <tr><td class="left"><b>Total (instant / via orders)</b></td><td></td><td></td><td></td><td></td>
         <td><b>${fmtIsk(r.material_cost_instant)} / ${fmtIsk(r.material_cost_orders)}</b></td></tr>
     </tbody></table>
-    <h3>Scenarios (per job)</h3>
+    <h3>Scenarios (per job)<span class="help" data-tip="Все четыре комбинации способов купить материалы и продать продукт, на весь job. Inst — мгновенно по существующим ордерам, Order — своим ордером. Брокерская комиссия платится только за свои ордера, поэтому ord→ord платит её дважды; налог с продаж платится во всех четырёх. Прочерк значит, что сделка неосуществима: либо материалы не выкупить с sell-ордеров в нужном количестве, либо выпуск не влезает в buy-ордера.">?</span></h3>
     <table><thead><tr><th class="left">Scenario</th><th>Profit</th><th>Margin %</th><th>ISK/h</th>
       <th>ISK/h real</th></tr></thead>
     <tbody>${Object.entries(scenNames).map(([k, n]) => `<tr>

@@ -151,6 +151,23 @@ class TestMaxRunsPerJob:
         assert 5295 * t > calc.MAX_JOB_SECONDS
         assert 5294 * t < calc.MAX_JOB_SECONDS
 
+    def test_data_analyzer_in_game_reference(self):
+        """Verified in game 2026-07-30. Data Analyzer I, NPC station, same skills:
+        the client capped Runs at 2648.
+
+        A second, independent confirmation of ceil — different base time (1800 s
+        against Damage Control's 900) — but deliberately not of the exact-time
+        basis: at an NPC station both bases predict 2648, so this measurement
+        cannot distinguish them. That question rests on Damage Control I, where
+        5295 was predicted by the exact basis alone.
+        """
+        t = calc.production_time(1800, te=20, industry=5, advanced_industry=5)
+        assert round(t) == 979
+        assert calc.max_runs_per_job(t) == 2648
+        assert calc.max_runs_per_job(round(t)) == 2648      # bases agree here
+        assert 2648 * t > calc.MAX_JOB_SECONDS             # ceil overshoots...
+        assert 2647 * t < calc.MAX_JOB_SECONDS             # ...where floor fits
+
     def test_forum_worked_example(self):
         # 1h42m per run: ceil(2_592_000 / 6_120) = 424, and 424 runs is 30.03
         # days — the accepted maximum sits just over the limit, so ceil not floor

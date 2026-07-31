@@ -76,6 +76,13 @@ separate problem — rewriting history needs a force-push, so ask first.
     checkable by dividing the displayed seconds — that was wrong, don't restore it.
   - it is `ceil`, not `floor`: 5295 × 489.6 = 30.005 days is accepted while 5294
     still fits inside 30 days, so the game grants the run that crosses the line.
+  Second in-game data point, Data Analyzer I at an NPC station: **2648**, which
+  confirms `ceil` again on a different base time (1800 s). It does *not* re-test
+  the exact-time basis — at an NPC station both bases predict 2648. The basis
+  rests on Damage Control I alone, which is enough because 5295 was predicted by
+  no other hypothesis. To re-test it, run Data Analyzer I in a structure: exact
+  gives 3309 where rounded gives 3311, and note the sign flips versus Damage
+  Control I (there exact was 5 *higher*), since 489.6 rounds up and 783.36 down.
   This is the same display-vs-precision split as the fee percentages above.
 - **Broker fee floor is 1%** on NPC stations (changed from 0.5% at some point);
   sales tax base 7.5%, −11%/Accounting level. The rate coefficients live in

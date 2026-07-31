@@ -147,8 +147,12 @@ separate problem — rewriting history needs a force-push, so ask first.
   from the client leaves a residual: the rate can be off by at most
   0.03%×0.005 + 0.02%×0.005 = 0.00025 points, i.e. 2.5 ISK per million of order
   value. Confirmed rather than assumed — 7.8925/9.4445 both display as
-  7.89/9.44 and reproduce the charged 24,881.59 exactly. Three regression tests
-  in `TestFees` pin this; don't "tighten" their tolerance to an exact match.
+  7.89/9.44 and reproduce the charged 24,881.59 exactly. Four regression tests
+  in `TestFees` pin this; don't "tighten" the rounded-standings tolerance to an
+  exact match. The real values later arrived from an ESI import —
+  7.892620134 / 9.444335456, inside the interval predicted here — and they hit
+  the charge to 0.0013 ISK. So an imported character is measurably more accurate
+  than typing standings off the client; see the character-import section.
 - **The broker fee uses UNMODIFIED (base) standings.** `Connections`,
   `Diplomacy` and `Social` raise *effective* standing but do not touch the fee —
   EVE Uni's Tax page states it outright ("the broker's fee is based on unmodified

@@ -111,6 +111,19 @@ class TestFees:
         assert fee == pytest.approx(self.GAME_FEE_ISK, abs=0.01)
         assert round(7.8925, 2) == 7.89 and round(9.4445, 2) == 9.44
 
+    def test_full_precision_standings_reproduce_the_charge_exactly(self):
+        """The residual in the test above is standing precision — now measured,
+        not inferred. An ESI import returned 7.892620134 / 9.444335456, which the
+        client displays as 7.89 / 9.44, and those land on the charged amount to a
+        thousandth of an ISK where the rounded pair misses by 3.83.
+
+        It also settles that ESI reports **base** standings: an effective value,
+        inflated by Connections, would be higher and could not reconcile.
+        """
+        rate = calc.broker_fee_rate(5, 7.892620134, 9.444335456)
+        assert self.GAME_PRICE * rate == pytest.approx(self.GAME_FEE_ISK, abs=0.01)
+        assert round(7.892620134, 2) == 7.89 and round(9.444335456, 2) == 9.44
+
     def test_displayed_percent_is_not_the_charged_rate(self):
         # taking the client's rounded "1.07%" at face value misses by ~100 ISK
         assert self.GAME_PRICE * 0.0107 == pytest.approx(24_781.20, abs=0.01)

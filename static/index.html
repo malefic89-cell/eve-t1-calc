@@ -145,6 +145,9 @@ tbody tr:hover { background: #161b22; cursor: pointer; }
   <div class="modal">
     <button class="close" onclick="closeModal('settingsModal')">✕</button>
     <h2>Settings</h2>
+    <h3>Character (optional)<span class="help" data-tip="Подключение персонажа из игры через EVE SSO, чтобы навыки и стендинги подтягивались сами вместо ручного ввода. Полностью необязательно: без персонажа всё работает как раньше, все значения остаются ручными. Импорт просто записывает их в те же поля ниже, поэтому после импорта их можно править руками. Нужно один раз зарегистрировать приложение на developers.eveonline.com — см. README. Секрет приложения не требуется: используется поток PKCE, в котором его нет. Запрашиваются только два права: чтение навыков и чтение стендингов, ничего больше.">?</span></h3>
+    <div id="ssoBox" class="dim" style="line-height:1.7">loading…</div>
+
     <h3>Skills<span class="help" data-tip="Натренированные уровни навыков, 0–5. Два влияют на деньги: Accounting снижает налог с продаж, Broker Relations — брокерскую комиссию. Два на время: Industry и Advanced Industry сокращают производство. На расход материалов навыки не влияют вообще — экономию материалов дают только ME чертежа, бонус структуры и ME-риг. Значения здесь считаются как есть: калькулятор не проверяет твои настоящие навыки, он считает по тому, что вписано.">?</span></h3>
     <div class="grid">
       <div><label>Accounting (0-5)<span class="help" data-tip="Навык Accounting: снижает налог с продаж на 11% за уровень. База 7.5%, при V — 3.375%. Налог платится с каждой продажи.">?</span></label><input type="number" min="0" max="5" id="s_accounting"></div>
@@ -524,9 +527,80 @@ function refreshFeePreview() {
 ["accounting", "broker_relations", "faction_standing", "corp_standing"].forEach(f =>
   document.getElementById("s_" + f).addEventListener("input", refreshFeePreview));
 
+// ---------- character import (optional) ----------
+// Everything here is additive: with no character connected the box just offers to
+// connect one and every setting stays manual.
+async function refreshSso() {
+  const box = document.getElementById("ssoBox");
+  let s;
+  try { s = await (await fetch("/api/sso/status")).json(); }
+  catch (e) { box.textContent = "character import unavailable"; return; }
+
+  const owner = s.hub_owner
+    ? ` Standings are read toward ${s.hub_owner.corporation_name} / ${s.hub_owner.faction_name}.`
+    : "";
+  if (!s.client_id_set) {
+    box.innerHTML =
+      `Not set up. Register an application at developers.eveonline.com with callback`
+      + ` <code>${s.redirect_uri}</code> and the scopes <code>${s.scopes.join("</code>, <code>")}</code>,`
+      + ` then paste its Client ID:<br>`
+      + `<input id="ssoClientId" placeholder="Client ID" style="width:320px">`
+      + ` <button id="ssoSaveId">Save</button>`;
+    document.getElementById("ssoSaveId").onclick = async () => {
+      await fetch("/api/sso/client-id", {method: "PUT",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({client_id: document.getElementById("ssoClientId").value.trim()})});
+      refreshSso();
+    };
+  } else if (!s.connected) {
+    box.innerHTML = `Client ID saved, no character connected.${owner}<br>`
+      + `<button class="primary" id="ssoConnect">Connect character</button>`
+      + ` <button id="ssoForgetId">Change Client ID</button>`;
+    document.getElementById("ssoConnect").onclick = async () => {
+      const r = await fetch("/api/sso/login");
+      if (!r.ok) { alert((await r.json()).detail); return; }
+      // opens EVE's login; the callback lands on our own /api/sso/callback
+      window.open((await r.json()).url, "_blank");
+      box.innerHTML = `Waiting for the EVE login tab… <button id="ssoDone">I have authorised</button>`;
+      document.getElementById("ssoDone").onclick = refreshSso;
+    };
+    document.getElementById("ssoForgetId").onclick = async () => {
+      await fetch("/api/sso/client-id", {method: "PUT",
+        headers: {"Content-Type": "application/json"}, body: JSON.stringify({client_id: ""})});
+      refreshSso();
+    };
+  } else {
+    box.innerHTML = `Connected as <b style="color:var(--text)">${s.character_name}</b>`
+      + (s.imported_at ? ` · last import ${s.imported_at}` : ` · not imported yet`)
+      + `${owner}<br><button class="primary" id="ssoImport">Import skills & standings</button>`
+      + ` <button id="ssoLogout">Disconnect</button>`;
+    document.getElementById("ssoImport").onclick = async () => {
+      const btn = document.getElementById("ssoImport");
+      btn.textContent = "Importing…"; btn.disabled = true;
+      const r = await fetch("/api/sso/import", {method: "POST"});
+      if (!r.ok) { alert("Import failed: " + ((await r.json()).detail || r.status)); refreshSso(); return; }
+      const d = await r.json();
+      // show what changed rather than silently rewriting the fields under you
+      const diff = Object.keys(d.imported)
+        .map(k => `${k}: ${d.before[k]} → ${d.imported[k]}`).join("\n");
+      SETTINGS = await (await fetch("/api/settings")).json();
+      S_FIELDS.forEach(f => document.getElementById("s_" + f).value = SETTINGS[f]);
+      refreshFeePreview();
+      loadItems();
+      refreshSso();
+      alert("Imported:\n" + diff);
+    };
+    document.getElementById("ssoLogout").onclick = async () => {
+      await fetch("/api/sso/logout", {method: "POST"});
+      refreshSso();
+    };
+  }
+}
+
 document.getElementById("btnSettings").onclick = async () => {
   SETTINGS = await (await fetch("/api/settings")).json();
   S_FIELDS.forEach(f => document.getElementById("s_" + f).value = SETTINGS[f]);
+  refreshSso();
   refreshFeePreview();
   selectedSystem = null;
   const curIdx = SETTINGS.current_manufacturing_index;

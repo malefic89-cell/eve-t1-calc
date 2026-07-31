@@ -24,10 +24,53 @@ FastAPI backend + single-page frontend (`static/index.html`, vanilla JS, no buil
 | `sde.py` | SDE download + SQLite queries (products, materials, systems). |
 | `esi.py` | ESI client, on-disk cache in `data/cache/`, error-limit handling. |
 | `config.py` | `Settings` dataclass persisted to `data/settings.json` (skills, standings, structure, runs, per-blueprint overrides). |
+| `sso.py` | EVE SSO (PKCE) + mapping character data onto `Settings`. Pure half is unit-tested; token store in `data/sso.json`. |
 | `app.py` | FastAPI app, global `State S`, bootstrap thread, recompute pipeline. |
 | `static/index.html` | Entire frontend: table, filters, pagination, tooltips, modals. |
 
 `data/` (SDE, cache, settings) and `.venv/` are gitignored — never commit them.
+
+## Character import (EVE SSO) — variant A only so far
+
+Optional by construction: the import **writes into the same `Settings` fields a
+manual edit does**, through `put_settings`, so no calculation code knows where a
+value came from and "works without a character" needs no separate code path.
+Keep it that way — do not branch the maths on whether a character is connected.
+
+- **PKCE, so there is no client secret** anywhere in the project. The client id is
+  public by design (stored in `data/sso.json`, overridable via
+  `EVE_CALC_SSO_CLIENT_ID`). The **refresh token is a secret**: `data/` is
+  gitignored, `SSOState.public()` excludes it, and a test asserts that.
+- The token endpoint takes **form encoding only** since 2025 — not JSON, not query
+  params. A refresh may return a **different** refresh token (CCP is enabling
+  rotation for native apps), so `sso_import` saves it *before* using the access
+  token; losing it would strand the connection.
+- `character_from_access_token` decodes the JWT **without verifying the
+  signature**. Safe only because the token came straight from the SSO token
+  endpoint over TLS in the same request and we never accept one from elsewhere.
+  If that ever changes, verification against CCP's JWKS becomes mandatory.
+- Skills use `active_skill_level`, not `trained_skill_level` (alpha clones have
+  trained levels they cannot use), and a skill absent from the payload maps to
+  **0** rather than being omitted — otherwise a stale manual value survives.
+- Standings resolve the hub owner from the SDE (`station_owner`: Jita 4-4 →
+  Caldari Navy 1000035 → Caldari State 500001), so changing the trade hub keeps
+  working. Skill IDs come from `type_id_by_name` for the same reason.
+- **ESI reports base standings, at full precision** — verified 2026-07-31 by
+  importing and reconciling against a real charge. The client showed 7.89 / 9.44;
+  ESI returned 7.892620134 / 9.444335456, and those reproduce the 24,881.59 ISK
+  broker fee from the Logic Circuit measurement to 0.0013 ISK, where the rounded
+  pair misses by 3.83. An effective (Connections-inflated) value would be higher
+  and could not reconcile, so no reverse correction is needed. **Importing is
+  strictly more accurate than typing standings from the client** — the client
+  only shows hundredths.
+- Importing also catches settings that drifted from reality: the first import
+  corrected Advanced Industry from an assumed 5 to the actual 4, which had been
+  overstating every ISK/h by 3.41%. Manual defaults are guesses; treat a large
+  diff at import time as the settings having been wrong, not the import.
+- Only `esi-skills.read_skills.v1` and `esi-characters.read_standings.v1` are
+  requested. Blueprints (variant B, real per-blueprint ME/TE instead of the
+  assumed 10/20) are not implemented; that needs a decision on what happens to
+  manually-set `blueprint_overrides`.
 
 ## Privacy rule (project-wide, applies to every change)
 

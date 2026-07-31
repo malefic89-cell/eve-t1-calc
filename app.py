@@ -7,18 +7,21 @@ from __future__ import annotations
 import concurrent.futures
 import datetime
 import logging
+import os
+import secrets
 import threading
 from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
 import calc
 import config
 import sde as sde_mod
-from esi import ESIClient
+import sso
+from esi import JITA_44, USER_AGENT, ESIClient
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 log = logging.getLogger("app")
@@ -63,6 +66,10 @@ class State:
         self.history_total = 0
         self.history_done = 0
         self.history_running = False
+
+        # One login attempt in flight: PKCE verifier + state, held in memory only
+        # so a restart simply invalidates a half-finished login.
+        self.sso_pending: dict | None = None
 
 
 S = State()
@@ -149,6 +156,10 @@ def _hist_stats(hist: list[dict]) -> dict:
 def _utc_today() -> datetime.date:
     """ESI history dates are UTC days — the local date can be a day ahead."""
     return datetime.datetime.now(datetime.timezone.utc).date()
+
+
+def _utc_now_iso() -> str:
+    return datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds")
 
 
 def _load_cached_history():
@@ -438,6 +449,135 @@ def put_settings(payload: dict):
     if S.status == "ready":
         recompute()
     return s.to_dict()
+
+
+# ---------------- character import (EVE SSO) ----------------
+# Optional throughout: with no character connected every setting stays manual and
+# the app behaves exactly as it did before this existed.
+
+# Must match the callback registered on developers.eveonline.com character for
+# character; a VPS needs its own application with its own URL.
+SSO_REDIRECT = os.environ.get(
+    "EVE_CALC_SSO_REDIRECT", "http://127.0.0.1:8000/api/sso/callback"
+)
+
+
+def _sso_skill_ids() -> dict[str, int]:
+    if S.sde is None:
+        raise HTTPException(503, "SDE not loaded yet")
+    return {name: S.sde.type_id_by_name(name) for name in sso.SKILL_FIELDS}
+
+
+def _sso_hub_owner() -> dict:
+    """Corp and faction whose standings set the broker fee, from the SDE."""
+    if S.sde is None:
+        raise HTTPException(503, "SDE not loaded yet")
+    owner = S.sde.station_owner(JITA_44)
+    if owner is None:
+        raise HTTPException(500, f"station {JITA_44} not found in the SDE")
+    return owner
+
+
+@app.get("/api/sso/status")
+def sso_status():
+    st = sso.load_state()
+    out = st.public()
+    out["redirect_uri"] = SSO_REDIRECT
+    if S.sde is not None:
+        out["hub_owner"] = S.sde.station_owner(JITA_44)
+    return out
+
+
+@app.put("/api/sso/client-id")
+def sso_set_client_id(payload: dict):
+    """The client id is public in the PKCE flow, so it is fine to accept and store
+    it here — unlike the refresh token, which never crosses this boundary."""
+    st = sso.load_state()
+    st.client_id = str(payload.get("client_id", "")).strip()
+    sso.save_state(st)
+    return st.public()
+
+
+@app.get("/api/sso/login")
+def sso_login():
+    st = sso.load_state()
+    if not st.client_id:
+        raise HTTPException(400, "set the client id first")
+    verifier, challenge = sso.pkce_pair()
+    state = secrets.token_urlsafe(16)
+    S.sso_pending = {"state": state, "verifier": verifier}
+    return {"url": sso.authorize_url(st.client_id, SSO_REDIRECT, challenge, state)}
+
+
+@app.get("/api/sso/callback")
+def sso_callback(code: str = "", state: str = ""):
+    pending = S.sso_pending
+    S.sso_pending = None          # single use, whatever happens next
+    if not pending or not secrets.compare_digest(state, pending["state"]):
+        # a mismatched state is the CSRF case the parameter exists for
+        return HTMLResponse("<h3>Login state mismatch — start again.</h3>", 400)
+    try:
+        tok = sso.exchange_code(
+            sso.load_state().client_id, code, pending["verifier"], USER_AGENT
+        )
+        char_id, char_name = sso.character_from_access_token(tok["access_token"])
+    except (sso.SSOError, KeyError) as e:
+        return HTMLResponse(f"<h3>Login failed</h3><pre>{e}</pre>", 400)
+
+    st = sso.load_state()
+    st.refresh_token = tok["refresh_token"]
+    st.character_id, st.character_name = char_id, char_name
+    sso.save_state(st)
+    log.info("SSO connected as %s (%d)", char_name, char_id)
+    return HTMLResponse(
+        f"<h3>Connected as {char_name}</h3>"
+        "<p>Close this tab and press Import in the settings.</p>"
+    )
+
+
+@app.post("/api/sso/import")
+def sso_import():
+    """Pull skills and standings onto the existing settings.
+
+    Writes through the same merge path a manual edit uses, so nothing downstream
+    can tell the difference and none of the other settings are disturbed.
+    """
+    st = sso.load_state()
+    if not st.connected:
+        raise HTTPException(400, "no character connected")
+    owner = _sso_hub_owner()
+    skill_ids = _sso_skill_ids()
+
+    tok = sso.refresh_tokens(st.client_id, st.refresh_token, USER_AGENT)
+    # store first: the returned refresh token may differ from the one we sent,
+    # and losing the new one would strand the connection
+    st.refresh_token = tok.get("refresh_token", st.refresh_token)
+    sso.save_state(st)
+    access = tok["access_token"]
+
+    skills = S.esi.character_skills(st.character_id, access)
+    standings = S.esi.character_standings(st.character_id, access)
+    imported = sso.skills_to_settings(skills, skill_ids)
+    imported.update(
+        sso.standings_for(standings, owner["corporation_id"], owner["faction_id"])
+    )
+
+    before = {k: getattr(S.settings, k) for k in imported}
+    put_settings(imported)          # validates, persists and recomputes
+    st.imported_at = _utc_now_iso()
+    sso.save_state(st)
+    return {"imported": imported, "before": before, "status": st.public()}
+
+
+@app.post("/api/sso/logout")
+def sso_logout():
+    """Forget the character. Settings keep the values that were imported — they
+    are ordinary settings now, and wiping them would be a surprise."""
+    st = sso.load_state()
+    st.refresh_token = ""
+    st.character_id, st.character_name, st.imported_at = 0, "", ""
+    sso.save_state(st)
+    return st.public()
 
 
 @app.get("/api/fees")

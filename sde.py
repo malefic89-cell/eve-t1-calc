@@ -229,3 +229,38 @@ class SDE:
     def type_name(self, type_id: int) -> str | None:
         rows = self._query("SELECT typeName FROM invTypes WHERE typeID = ?", (type_id,))
         return rows[0]["typeName"] if rows else None
+
+    def type_id_by_name(self, name: str) -> int | None:
+        """Used to resolve skill names to IDs, so no skill ID is hardcoded."""
+        rows = self._query(
+            "SELECT typeID FROM invTypes WHERE typeName = ? AND published = 1", (name,)
+        )
+        return rows[0]["typeID"] if rows else None
+
+    def station_owner(self, station_id: int) -> dict | None:
+        """Who owns a station, for the standings that set the broker fee.
+
+        Derived rather than hardcoded so changing the trade hub keeps working:
+        Jita 4-4 resolves to Caldari Navy (1000035) in the Caldari State (500001).
+        """
+        rows = self._query(
+            """
+            SELECT s.corporationID, n.itemName AS corporationName,
+                   c.factionID, f.factionName
+            FROM staStations s
+            JOIN crpNPCCorporations c ON c.corporationID = s.corporationID
+            LEFT JOIN invNames n ON n.itemID = s.corporationID
+            LEFT JOIN chrFactions f ON f.factionID = c.factionID
+            WHERE s.stationID = ?
+            """,
+            (station_id,),
+        )
+        if not rows:
+            return None
+        r = rows[0]
+        return {
+            "corporation_id": r["corporationID"],
+            "corporation_name": r["corporationName"],
+            "faction_id": r["factionID"],
+            "faction_name": r["factionName"],
+        }

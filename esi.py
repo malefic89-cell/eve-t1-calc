@@ -82,11 +82,18 @@ class ESIClient:
                 if reset is not None:
                     self._error_reset_at = time.time() + int(reset)
 
-    def _get(self, path: str, params: dict | None = None) -> requests.Response:
+    def _get(
+        self, path: str, params: dict | None = None, token: str | None = None
+    ) -> requests.Response:
+        # `token` switches on an authenticated route. Deliberately no disk cache
+        # on this path: character data is personal and belongs in memory only.
+        headers = {"Authorization": f"Bearer {token}"} if token else None
         self._respect_error_limit()
         for attempt in range(4):
             try:
-                resp = self.session.get(ESI_BASE + path, params=params, timeout=30)
+                resp = self.session.get(
+                    ESI_BASE + path, params=params, timeout=30, headers=headers
+                )
             except requests.RequestException as e:
                 if attempt == 3:
                     raise ESIError(f"network error on {path}: {e}") from e
@@ -211,6 +218,14 @@ class ESIClient:
             data = []  # 4xx: the type genuinely never trades
         self._cache_put(key, data)
         return data
+
+    # ---------- authenticated (character) ----------
+
+    def character_skills(self, character_id: int, token: str) -> dict:
+        return self._get(f"/characters/{character_id}/skills/", token=token).json()
+
+    def character_standings(self, character_id: int, token: str) -> list:
+        return self._get(f"/characters/{character_id}/standings/", token=token).json()
 
     def system_cost_indices(self, force: bool = False) -> dict[int, dict[str, float]]:
         """{system_id: {activity_name: cost_index}}"""

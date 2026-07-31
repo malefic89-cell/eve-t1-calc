@@ -131,6 +131,75 @@ class TestItemsStayServedDuringRefresh:
         assert ei.value.status_code == 503
 
 
+class TestSsoRoutes:
+    """The routes reachable without a token or a network round trip."""
+
+    @pytest.fixture(autouse=True)
+    def _isolate(self, tmp_path, monkeypatch):
+        import sso
+        monkeypatch.setattr(sso, "DATA_DIR", tmp_path)
+        monkeypatch.setattr(sso, "STATE_FILE", tmp_path / "sso.json")
+        monkeypatch.delenv("EVE_CALC_SSO_CLIENT_ID", raising=False)
+        saved = app.S.sso_pending
+        yield
+        app.S.sso_pending = saved
+
+    def test_status_on_a_fresh_install(self):
+        st = app.sso_status()
+        assert st["connected"] is False and st["client_id_set"] is False
+        assert st["redirect_uri"] == app.SSO_REDIRECT
+        assert "refresh_token" not in st
+
+    def test_login_refuses_without_a_client_id(self):
+        with pytest.raises(HTTPException) as ei:
+            app.sso_login()
+        assert ei.value.status_code == 400
+
+    def test_login_returns_an_authorize_url_and_arms_one_attempt(self):
+        app.sso_set_client_id({"client_id": "cid-123"})
+        url = app.sso_login()["url"]
+        assert "client_id=cid-123" in url and "code_challenge_method=S256" in url
+        assert set(app.S.sso_pending) == {"state", "verifier"}
+        assert f"state={app.S.sso_pending['state']}" in url
+
+    def test_a_second_login_replaces_the_pending_attempt(self):
+        app.sso_set_client_id({"client_id": "cid"})
+        app.sso_login()
+        first = app.S.sso_pending["state"]
+        app.sso_login()
+        assert app.S.sso_pending["state"] != first
+
+    def test_callback_rejects_a_mismatched_state(self):
+        """That parameter exists to catch a forged callback, so a wrong value must
+        fail rather than proceed to the token exchange."""
+        app.sso_set_client_id({"client_id": "cid"})
+        app.sso_login()
+        resp = app.sso_callback(code="whatever", state="not-the-one")
+        assert resp.status_code == 400
+        assert app.S.sso_pending is None      # consumed either way
+
+    def test_callback_without_a_pending_attempt_is_rejected(self):
+        app.S.sso_pending = None
+        assert app.sso_callback(code="c", state="s").status_code == 400
+
+    def test_import_refuses_with_no_character(self, clean_state):
+        before = clean_state.settings.accounting
+        with pytest.raises(HTTPException) as ei:
+            app.sso_import()
+        assert ei.value.status_code == 400
+        assert clean_state.settings.accounting == before
+
+    def test_logout_clears_the_character_but_keeps_settings(self, clean_state):
+        import sso
+        sso.save_state(sso.SSOState(client_id="cid", refresh_token="rt",
+                                    character_id=7, character_name="Pilot"))
+        clean_state.settings = config.Settings(accounting=3)
+        out = app.sso_logout()
+        assert out["connected"] is False and out["character_name"] == ""
+        assert out["client_id_set"] is True            # no need to re-register
+        assert clean_state.settings.accounting == 3    # imported values stay
+
+
 class TestCategoryOrder:
     def test_rigs_stay_together_and_run_small_to_capital(self):
         cats = ["Ship", "Rigs (Capital)", "Charge", "Rigs (Small)",

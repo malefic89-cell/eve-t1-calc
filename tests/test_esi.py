@@ -42,11 +42,13 @@ class _Session:
         self.queue = list(queue)
         self.headers = {}
         self.calls = 0
+        self.headers_seen = []          # to assert the Bearer on authed routes
         self._lock = threading.Lock()   # order pages are fetched concurrently
 
-    def get(self, url, params=None, timeout=None):
+    def get(self, url, params=None, timeout=None, headers=None):
         with self._lock:
             self.calls += 1
+            self.headers_seen.append(headers)
             item = self.queue.pop(0) if self.queue else _Resp(500)
         if isinstance(item, Exception):
             raise item
@@ -171,6 +173,29 @@ def test_failed_page_aborts_the_fetch(tmp_path, monkeypatch):
     else:
         raise AssertionError("a failed page must not yield a partial book")
     assert not (tmp_path / f"orders_{esi.THE_FORGE}.json").exists()
+
+
+def test_authenticated_routes_send_the_bearer_and_skip_the_cache(tmp_path, monkeypatch):
+    """Character data is personal: it must go out with the token and must not be
+    written to the on-disk cache the public endpoints share."""
+    payload = {"skills": [{"skill_id": 3380, "active_skill_level": 5}]}
+    c = _client(tmp_path, [_Resp(200, payload)], monkeypatch)
+    assert c.character_skills(999, "tok-abc") == payload
+    assert c.session.headers_seen[-1] == {"Authorization": "Bearer tok-abc"}
+    assert list(tmp_path.glob("*.json")) == []
+
+
+def test_public_routes_send_no_authorization_header(tmp_path, monkeypatch):
+    c = _client(tmp_path, [_Resp(400)], monkeypatch)
+    c.history(1234)
+    assert c.session.headers_seen[-1] is None
+
+
+def test_standings_route_is_authenticated_too(tmp_path, monkeypatch):
+    rows = [{"from_type": "faction", "from_id": 500001, "standing": 8.31}]
+    c = _client(tmp_path, [_Resp(200, rows)], monkeypatch)
+    assert c.character_standings(999, "t") == rows
+    assert c.session.headers_seen[-1] == {"Authorization": "Bearer t"}
 
 
 def test_esi_error_carries_4xx_status(tmp_path, monkeypatch):

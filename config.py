@@ -107,6 +107,11 @@ def load_settings() -> Settings:
 def save_settings(s: Settings) -> None:
     s.validate()
     DATA_DIR.mkdir(parents=True, exist_ok=True)
-    SETTINGS_FILE.write_text(
+    # Written via a temp file and an atomic replace, as sso.py does with the token
+    # store: dying halfway through the direct write left a truncated settings.json
+    # that load_settings then refuses to parse, losing every blueprint override.
+    tmp = SETTINGS_FILE.with_suffix(".tmp")
+    tmp.write_text(
         json.dumps(s.to_dict(), indent=2, ensure_ascii=False), encoding="utf-8"
     )
+    tmp.replace(SETTINGS_FILE)

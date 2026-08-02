@@ -31,10 +31,21 @@ For every manufacturable T1 item, a 2×2 matrix of scenarios:
 | **Buy instantly** (from sell orders, volume-weighted) | inst→inst | inst→order |
 | **Own buy orders** (at best bid, +broker fee)         | ord→inst  | ord→order  |
 
-Each cell: profit/run, margin %, ISK/hour (with TE + skill + structure time
-bonuses). Job cost = EIV × system cost index × (1 + structure tax) + 4% SCC.
-Material quantities use the exact EVE rounding: `max(runs, ceil(round(base ×
-runs × (1−ME%) × (1−struct%) × (1−rig%), 2)))`.
+Each cell: profit per job, margin %, ISK/hour (with TE + skill + structure time
+bonuses), plus ISK/h real — the same profit at the rate the market absorbs.
+
+Job cost (verified in game to the ISK):
+
+```
+EIV × system cost index × (1 − structure job cost bonus)
+  + EIV × facility tax
+  + EIV × 4% SCC surcharge
+```
+
+Facility tax and the SCC surcharge apply to the **full** EIV, not to EIV × index.
+
+Material quantities use the exact EVE rounding, per job rather than per run:
+`max(runs, ceil(round(base × runs × (1−ME%) × (1−struct%) × (1−rig%), 2)))`.
 
 Broker fee: `3% − 0.3%×BrokerRelations − 0.03%×faction − 0.02%×corp`, floor 1%.
 Standings are the **unmodified** ones — Connections and Diplomacy do not reduce
@@ -85,6 +96,7 @@ environment.
 - `sde.py` — SDE download + SQLite queries (manufacturing = activityID 1)
 - `esi.py` — ESI client: disk cache, pagination, error-limit handling, User-Agent
 - `config.py` — persisted character settings
+- `sso.py` — EVE SSO (PKCE) + mapping character data onto `Settings`
 - `app.py` — FastAPI endpoints + background bootstrap/refresh threads
 - `static/index.html` — UI
 
@@ -94,5 +106,7 @@ environment.
   datacore cost feed into `calc.py` (fee/pricing helpers are activity-agnostic).
 - **Reactions**: activityID 11, `reaction` cost index from the same
   `/industry/systems/` payload already cached.
-- **ESI OAuth skill import**: extend `ESIClient` with a token provider and
-  write imported skill levels into `config.Settings`.
+- **Blueprint import** (variant B): real per-blueprint ME/TE from
+  `esi-characters.read_blueprints.v1` instead of the assumed 10/20. Needs a
+  decision first on what happens to manually set `blueprint_overrides`.
+  (Skills and standings already import — see above.)

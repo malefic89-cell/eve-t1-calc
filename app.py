@@ -248,13 +248,13 @@ def compute_row(p: sde_mod.Product) -> dict:
     }.items():
         s = calc.scenario(mc, jcost, rev, units, buy_broker, sell_broker, broker, tax, job_seconds)
         sc[key] = {
-            "profit": s.profit_per_run,
+            "profit": s.profit_per_job,
             "margin": s.margin_pct,
             "iph": s.isk_per_hour,
             # Same profit at the rate the market can actually absorb. Applied to
             # every scenario: order-book depth already limits a single job, while
             # daily volume is what limits *repeating* it, by any sell method.
-            "iph_real": calc.market_limited_iph(s.profit_per_run, units, job_seconds, vol),
+            "iph_real": calc.market_limited_iph(s.profit_per_job, units, job_seconds, vol),
         }
 
     # Sanity check: an empty recipe or a production cost under 1% of the sell

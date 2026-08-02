@@ -137,9 +137,14 @@ def standings_for(payload, corporation_id: int, faction_id: int) -> dict[str, fl
     ESI lists only entities the character has a recorded standing with; anything
     absent is 0.0, which is the same as neutral for the broker fee.
 
-    Whether ESI reports base or effective standing is undocumented — the broker
-    fee needs the **base** value (Connections must not count). Compare the
-    imported numbers against the client once before trusting them.
+    ESI reports **base** standings — which is what the broker fee needs, since
+    Connections and friends must not count — and at full precision. Settled by
+    measurement, not by the docs: the imported 7.892620134 / 9.444335456
+    reproduce a real 24,881.59 ISK broker fee to 0.0013 ISK, where the same pair
+    rounded to the hundredths the client displays misses by 3.83, and an
+    effective (Connections-inflated) value could not reconcile at all. So an
+    import is strictly more accurate than typing the numbers off the character
+    sheet, and needs no reverse correction.
     """
     by: dict[tuple, float] = {}
     for e in payload or []:

@@ -412,15 +412,15 @@ class TestScenario:
     def test_instant_both_sides(self):
         # cost 100 mats + 10 job; sell 1 unit at 200; tax 10%; no broker
         s = calc.scenario(100, 10, 200, 1, False, False, 0.03, 0.10, 3600)
-        assert s.profit_per_run == pytest.approx(200 * 0.9 - 110)
+        assert s.profit_per_job == pytest.approx(200 * 0.9 - 110)
         assert s.margin_pct == pytest.approx((180 - 110) / 110 * 100)
         assert s.isk_per_hour == pytest.approx(70.0)
 
     def test_broker_applied_on_both(self):
         s = calc.scenario(100, 0, 200, 1, True, True, 0.02, 0.0, 3600)
         # cost 100*1.02 = 102; revenue 200 - 200*0.02 = 196
-        assert s.profit_per_run == pytest.approx(94.0)
+        assert s.profit_per_job == pytest.approx(94.0)
 
     def test_none_propagates(self):
         s = calc.scenario(None, 10, 200, 1, False, False, 0.03, 0.1, 3600)
-        assert s.profit_per_run is None and s.margin_pct is None and s.isk_per_hour is None
+        assert s.profit_per_job is None and s.margin_pct is None and s.isk_per_hour is None

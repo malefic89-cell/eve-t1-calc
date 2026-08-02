@@ -1,7 +1,8 @@
 """ESI client with on-disk caching and error-limit handling.
 
-No authentication is needed for the endpoints used here. OAuth (for skill
-import) can be layered on later by extending ESIClient with a token provider.
+The market endpoints need no authentication. The character ones do: pass an
+access token (obtained by `sso.py`) to `_get`, which then skips the disk cache —
+character data is personal and stays in memory.
 """
 from __future__ import annotations
 

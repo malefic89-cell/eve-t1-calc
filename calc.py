@@ -326,7 +326,10 @@ def market_limited_iph(
 
 @dataclass
 class Scenario:
-    profit_per_run: float | None
+    """Everything here is for a whole job, not for one run: material rounding is
+    per job, so a job's numbers are not a run's times `runs`."""
+
+    profit_per_job: float | None
     margin_pct: float | None
     isk_per_hour: float | None
 
@@ -335,31 +338,33 @@ def scenario(
     material_cost: float | None,
     job_cost_isk: float,
     unit_revenue: float | None,
-    units_per_run: int,
+    units: int,
     buy_broker: bool,
     sell_broker: bool,
     broker_rate: float,
     tax_rate: float,
-    time_per_run_s: float,
+    job_seconds: float,
 ) -> Scenario:
-    """One cell of the 2x2 matrix.
+    """One cell of the 2x2 matrix, for one whole job.
 
-    material_cost: ISK for one run's materials at the chosen buy method
+    material_cost: ISK for the job's materials at the chosen buy method
                    (already the raw order price; broker fee added here if
                    buying via own buy orders).
     unit_revenue:  raw unit price at the chosen sell method; sales tax and
                    (optionally) broker fee are deducted here.
+    units:         items the job produces in total (qty per run x runs).
+    job_seconds:   the job's whole duration, not the time of a single run.
     """
     if material_cost is None or unit_revenue is None:
         return Scenario(None, None, None)
 
     cost = material_cost * (1 + broker_rate if buy_broker else 1) + job_cost_isk
-    revenue = unit_revenue * units_per_run
+    revenue = unit_revenue * units
     revenue -= revenue * tax_rate
     if sell_broker:
-        revenue -= unit_revenue * units_per_run * broker_rate
+        revenue -= unit_revenue * units * broker_rate
 
     profit = revenue - cost
     margin = (profit / cost * 100) if cost > 0 else None
-    iph = profit / (time_per_run_s / 3600) if time_per_run_s > 0 else None
+    iph = profit / (job_seconds / 3600) if job_seconds > 0 else None
     return Scenario(profit, margin, iph)

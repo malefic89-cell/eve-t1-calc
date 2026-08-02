@@ -156,9 +156,14 @@ tbody tr:hover { background: #161b22; cursor: pointer; }
       <div><label>Advanced Industry (0-5)<span class="help" data-tip="Навык Advanced Industry: −3% ко времени производства за уровень.">?</span></label><input type="number" min="0" max="5" id="s_advanced_industry"></div>
     </div>
     <h3>Standings (Jita 4-4 owner)<span class="help" data-tip="Стендинги влияют только на брокерскую комиссию — больше ни на что из того, что считает калькулятор. Причём на комиссию идёт базовый, немодифицированный стендинг: Connections, Diplomacy и Social её не снижают. На стоимость производственной работы стендинги не влияют вообще (у индустрии нет скидки за стендинг). В игре они ещё снижают налог за переработку руды с 5% до 0% при стендинге 6.67, но переработку это приложение не считает. Отрицательный стендинг комиссию повышает.">?</span></h3>
+    <!-- step="any", not a 0.01 grid: an imported standing carries nine decimals
+         (7.892620134), and a spinner click or an arrow key would snap it to the
+         nearest hundredth. That silently throws away the precision the import
+         exists for — the client only ever shows two decimals, while the game
+         charges the full value. -->
     <div class="grid">
-      <div><label>Faction standing<span class="help" data-tip="Стендинг к фракции Caldari State (владелец Jita 4-4): −0.03% к брокерской комиссии за каждый пункт. Минимум комиссии на NPC-станции — 1%. ВПИСЫВАЙ БАЗОВЫЙ СТЕНДИНГ, НЕ ЭФФЕКТИВНЫЙ: комиссия считается от немодифицированного значения, и навыки Connections, Diplomacy, Social на неё не влияют, хотя эффективный стендинг поднимают. В карточке персонажа показан именно эффективный — он выше базового, и если взять его, комиссия окажется занижена.">?</span></label><input type="number" step="0.01" id="s_faction_standing"></div>
-      <div><label>Corp standing<span class="help" data-tip="Стендинг к корпорации Caldari Navy: −0.02% к брокерской комиссии за каждый пункт. Пункт корпоративного стендинга дешевле фракционного (0.02% против 0.03%). Тоже базовый, не эффективный — см. подсказку у Faction standing.">?</span></label><input type="number" step="0.01" id="s_corp_standing"></div>
+      <div><label>Faction standing<span class="help" data-tip="Стендинг к фракции Caldari State (владелец Jita 4-4): −0.03% к брокерской комиссии за каждый пункт. Минимум комиссии на NPC-станции — 1%. ВПИСЫВАЙ БАЗОВЫЙ СТЕНДИНГ, НЕ ЭФФЕКТИВНЫЙ: комиссия считается от немодифицированного значения, и навыки Connections, Diplomacy, Social на неё не влияют, хотя эффективный стендинг поднимают. В карточке персонажа показан именно эффективный — он выше базового, и если взять его, комиссия окажется занижена.">?</span></label><input type="number" step="any" id="s_faction_standing"></div>
+      <div><label>Corp standing<span class="help" data-tip="Стендинг к корпорации Caldari Navy: −0.02% к брокерской комиссии за каждый пункт. Пункт корпоративного стендинга дешевле фракционного (0.02% против 0.03%). Тоже базовый, не эффективный — см. подсказку у Faction standing.">?</span></label><input type="number" step="any" id="s_corp_standing"></div>
     </div>
     <div class="dim" style="font-size:11px; margin-top:-2px">
       Base (unmodified) standings — Connections / Diplomacy / Social raise your

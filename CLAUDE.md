@@ -121,12 +121,26 @@ separate problem — rewriting history needs a force-push, so ask first.
     still fits inside 30 days, so the game grants the run that crosses the line.
   Second in-game data point, Data Analyzer I at an NPC station: **2648**, which
   confirms `ceil` again on a different base time (1800 s). It does *not* re-test
-  the exact-time basis — at an NPC station both bases predict 2648. The basis
-  rests on Damage Control I alone, which is enough because 5295 was predicted by
-  no other hypothesis. To re-test it, run Data Analyzer I in a structure: exact
-  gives 3309 where rounded gives 3311, and note the sign flips versus Damage
-  Control I (there exact was 5 *higher*), since 489.6 rounds up and 783.36 down.
+  the exact-time basis — at an NPC station both bases predict 2648.
+  **The exact-time basis is settled, verified 2026-08-05** (regression test
+  exists): the same Damage Control I in a structure with −20% time, TE 20 /
+  Industry 5 / Advanced Industry 5 — 6m32s per run and a cap of **6618**. Exact
+  (391.68 s) predicts 6618; the displayed 392 s predicts 6613. So the basis no
+  longer rests on one reading. Note this is not the first measurement repeated:
+  the structure bonus moves the per-run time to a value whose fraction rounds the
+  *other* way (489.6 up, 391.68 down), so surviving the first reading did not
+  make a hypothesis free to survive this one.
+  Third data point, Antimatter Charge S at an NPC station, **verified 2026-08-05**
+  (regression test exists): 4m36s per run and a cap of **9392**. Its value is not
+  the cap — 276 s is whole, so both bases agree — but that it is the only reading
+  at **non-maximal skills** (Industry 2, Advanced Industry untrained). Every other
+  reading is Industry 5 / Advanced Industry 5, where the 4%/level and 3%/level
+  terms enter together and cannot be told apart; this one separates them.
   This is the same display-vs-precision split as the fee percentages above.
+  Beware when reconciling old readings: **the skills in `Settings` are not
+  necessarily the skills of the character holding the blueprint.** A reading that
+  seems to contradict the settings may just be the other character — check the
+  displayed per-run time against each skill set before concluding the code is wrong.
 - **Broker fee floor is 1%** on NPC stations (changed from 0.5% at some point);
   sales tax base 7.5%, −11%/Accounting level. The rate coefficients live in
   `calc.BROKER_FEE_*`; `GET /api/fees` previews them for the settings modal so

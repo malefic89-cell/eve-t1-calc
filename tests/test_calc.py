@@ -181,6 +181,63 @@ class TestMaxRunsPerJob:
         assert 2648 * t > calc.MAX_JOB_SECONDS             # ceil overshoots...
         assert 2647 * t < calc.MAX_JOB_SECONDS             # ...where floor fits
 
+    def test_damage_control_in_structure_in_game_reference(self):
+        """Verified in game 2026-08-05. Damage Control I in a structure with a
+        -20% time bonus, TE 20, Industry 5, Advanced Industry 5: the client
+        showed 6m32s per run and capped Runs at 6618.
+
+        This is what settles the exact-vs-displayed basis, which until now rested
+        on the single NPC-station reading of the same item. The per-run time is
+        391.68 s; the cap computed from it is 6618, while the displayed 392 s
+        would give 6613. The observed 6618 is predicted by the exact basis alone.
+
+        Two readings of one blueprint at different facilities are not one
+        measurement repeated: the structure bonus changes the time to a value
+        whose fractional part rounds the other way, so a hypothesis that survived
+        the first reading is not free to survive this one.
+        """
+        t = calc.production_time(900, te=20, industry=5, advanced_industry=5,
+                                 structure_time_bonus_pct=20)
+        assert t == pytest.approx(391.68)
+        assert round(t) == 392                      # displayed 6m32s
+        assert calc.max_runs_per_job(t) == 6618     # the observed cap
+        assert calc.max_runs_per_job(round(t)) == 6613   # the rejected basis
+        assert 6618 * t > calc.MAX_JOB_SECONDS      # ceil overshoots...
+        assert 6617 * t < calc.MAX_JOB_SECONDS      # ...where floor still fits
+
+    def test_antimatter_charge_s_in_game_reference(self):
+        """Verified in game 2026-08-05. Antimatter Charge S Blueprint at an NPC
+        station, ME/TE 0, Industry 2, Advanced Industry untrained: the client
+        showed 4m36s per run, 46m00s for the 10-run job, and capped Runs at 9392.
+
+        The first reading taken at a non-maximal skill level. Both earlier
+        references were Industry 5 / Advanced Industry 5, which pinned the
+        4%-per-level Industry term at a single point and could not tell it apart
+        from the 3%-per-level Advanced Industry one. Industry 2 with Advanced
+        Industry at 0 separates them.
+
+        Confirms ceil a third time, on a third base time — floor would give 9391.
+        It says nothing about the exact-vs-displayed basis: 276 s is a whole
+        number, so both agree. That still rests on Damage Control I alone. This
+        same blueprint would settle it in a structure, where -20% time gives
+        220.8 s and the bases split 11740 (exact) against 11729 (rounded) — the
+        widest margin of any candidate so far.
+        """
+        t = calc.production_time(300, te=0, industry=2, advanced_industry=0)
+        assert t == 276.0
+        assert round(t) == 276                    # displayed 4m36s
+        assert round(t * 10) == 2760              # 46m00s for the whole job
+        assert calc.max_runs_per_job(t) == 9392   # the observed cap
+        assert 9392 * t > calc.MAX_JOB_SECONDS    # ceil overshoots...
+        assert 9391 * t < calc.MAX_JOB_SECONDS    # ...where floor still fits
+
+        # Same job's materials: ME 0 at an NPC station leaves the multiplier at
+        # 1.0, so these are plain multiples. They check the SDE base quantities
+        # (204/17/1 per run), not the rounding rule — nothing rounds here.
+        assert calc.material_quantity(204, 10, 0) == 2040
+        assert calc.material_quantity(17, 10, 0) == 170
+        assert calc.material_quantity(1, 10, 0) == 10
+
     def test_forum_worked_example(self):
         # 1h42m per run: ceil(2_592_000 / 6_120) = 424, and 424 runs is 30.03
         # days — the accepted maximum sits just over the limit, so ceil not floor
